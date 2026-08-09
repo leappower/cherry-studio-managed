@@ -1,0 +1,93 @@
+# fork-win-build.yml
+#
+# CherryStudio 企业受管版（cherry-managed）· Fork Windows 补丁包构建 workflow
+#
+# 目标（V-M0-2，方案-企业受管版-v4.0 §13.1）：
+#   GitHub Actions windows-latest runner 上运行 electron-builder，产出 NSIS 安装包
+#   ${productName}-${version}-${arch}-setup.exe，供测试机（192.168.3.188/69）安装验证。
+#
+# 参考：官方 .github/workflows/nightly-build.yml / ci.yml（本 workflow 不改动官方文件）。
+#
+# 签名处理（审计修正，M0-2）：
+#   electron-builder.yml:98-99 配置了 signtoolOptions.sign = scripts/win-sign.js。
+#   但 scripts/win-sign.js:60 仅在设置了环境变量 WIN_SIGN 时才执行签名，
+#   未设置时是 no-op（不会阻塞构建）——与官方 nightly-build.yml 的 Windows job 一致
+#   （官方 Windows job 不传 CSC_LINK / CSC_KEY_PASSWORD / WIN_SIGN，Windows 包不签名）。
+#   因此本 workflow **明确不设置 WIN_SIGN，不配置 CSC_* secrets**，即临时禁用签名，
+#   保证 CI 出包不被签名阻塞。
+#   兜底：显式设 CSC_IDENTITY_AUTO_DISCOVERY=false，防止 electron-builder 自动发现
+#   本机证书而尝试签名。
+#   注：未签名包在 Windows SmartScreen 会提示"未知发布者"，仅用于 M0 求证阶段内网验证，
+#       正式发布签名属后续 F-11/E-2 范围，届时再引入受管签名（WIN_SIGN + 证书 secrets）。
+
+name: Fork Windows Build
+
+on:
+  workflow_dispatch:      # 手动触发（M0 求证阶段主用）
+  push:
+    branches:
+      - managed/**        # Fork 改动分支，自动触发
+
+permissions:
+  contents: read
+  actions: write          # 允许清理/管理 artifacts
+
+jobs:
+  build-win:
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out Git repository
+        uses: actions/checkout@v6
+
+      - name: Install Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: '.node-version'   # 24.11.1
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v5
+        with:
+          version: 11.8.0                      # 与 package.json packageManager 一致
+
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        shell: bash
+        run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_OUTPUT
+
+      - name: Cache pnpm dependencies
+        uses: actions/cache@v5
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-
+
+      - name: Install Dependencies
+        run: pnpm install
+
+      - name: Build Windows x64
+        shell: bash
+        run: pnpm build:win:x64
+        env:
+          # 签名处理（见文件头说明）：不设 WIN_SIGN / CSC_* → 临时禁用签名，出包不阻塞。
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'   # 兜底：禁止自动发现本机证书
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NODE_OPTIONS: --max-old-space-size=8192
+
+      - name: List build artifacts
+        shell: bash
+        run: |
+          echo "构建产物:"
+          find dist -maxdepth 1 -type f \( -name "*-setup.exe" -o -name "*-portable.exe" -o -name "latest*.yml" \) | sort
+
+      - name: Upload NSIS installer
+        uses: actions/upload-artifact@v7
+        with:
+          # NSIS 包：${productName}-${version}-${arch}-setup.exe（electron-builder.yml artifactName）
+          name: fork-win-build-setup
+          path: |
+            dist/*-setup.exe
+          retention-days: 14
+          compression-level: 8
+          if-no-files-found: error
