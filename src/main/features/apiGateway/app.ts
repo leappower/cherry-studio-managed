@@ -6,6 +6,7 @@ import { DataApiError } from '@shared/data/api/errors'
 import { Elysia } from 'elysia'
 import { v4 as uuidv4 } from 'uuid'
 
+import { adminRoutes } from './adminRoutes'
 import { gatewayErrorHandler } from './errors'
 import { authorizeApiRequest } from './middleware/auth'
 import {
@@ -48,6 +49,9 @@ const v1Routes = new Elysia({ prefix: '/v1' })
   .use(responsesRoutes)
   .use(modelsRoutes)
   .use(knowledgeRoutes)
+  // M0-1 managed admin routes (Fork). Minimal surface — see ./adminRoutes.
+  // Mounted last in the chain so it inherits the `scoped` bearer/x-api-key guard above.
+  .use(adminRoutes)
 
 /** Where the gateway listens; used to render an absolute OpenAPI server URL. */
 interface BuildAppOptions {

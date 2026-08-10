@@ -6,7 +6,7 @@
  * configuration) lives here, not on sessions.
  */
 
-import { useInvalidateCache, useMutation, useQuery } from '@renderer/data/hooks/useDataApi'
+import { useDataChange, useInvalidateCache, useMutation, useQuery } from '@renderer/data/hooks/useDataApi'
 import { createAgentAndRefresh } from '@renderer/services/createAgent'
 import { toast } from '@renderer/services/toast'
 import type { AddAgentForm, UpdateAgentBaseOptions, UpdateAgentForm, UpdateAgentFunction } from '@renderer/types/agent'
@@ -69,6 +69,11 @@ export const useAgents = () => {
   const { data, isLoading, error, refetch } = useQuery('/agents', { query: { limit: AGENTS_MAX_LIMIT } })
   const agents = useMemo<AgentEntity[]>(() => (data?.items ?? []) as unknown as AgentEntity[], [data])
   const invalidate = useInvalidateCache()
+
+  // M0-1 hot-reload: react to an external data-change broadcast (managed admin route
+  // writes sqlite, main notifies `DataApi_DataChanged`, this refetches the list) so the
+  // UI updates without a restart. Same official mechanism used by useTasks.ts.
+  useDataChange('/agents', () => refetch())
 
   const addAgent = useCallback(
     async (form: AddAgentForm): Promise<Result<AgentEntity>> => {
