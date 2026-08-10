@@ -18,6 +18,13 @@
       "description": "HTTP API của Cherry Studio tương thích với OpenAI, Anthropic và Gemini, cùng các endpoint riêng của Cherry (mô hình, cơ sở tri thức)",
       "language_switcher_label": "Ngôn ngữ tài liệu",
       "operations": {
+        "admin_create_agent": "[to be translated]:Create an agent (managed admin route, M0-4). Body follows the official CreateAgentCommand schema (name/type/model/instructions/configuration/tools/skills). Requires `Authorization: Bearer`.",
+        "admin_create_provider": "[to be translated]:Create a provider (managed admin route, M0-1②/M0-4). Body follows the official CreateProviderDto. Requires `Authorization: Bearer`.",
+        "admin_list_providers": "[to be translated]:List providers (managed admin route, M0-1②). Optional `?enabled=true|false` filter. Requires `Authorization: Bearer`.",
+        "admin_read_usage": "[to be translated]:Read model + token usage from the local `ai_usage_record` table (managed admin route, M0-5). Supports `?from=` / `?to=` numeric timestamp window filters; returns the full official record fields. Requires `Authorization: Bearer`.",
+        "admin_replace_provider_api_keys": "[to be translated]:Replace a provider's stored API keys (managed admin route, M0-1③). Body: `{ \"keys\": ApiKeyEntry[] }`. Only updates the employee-side provider key field; relay-side revocation is an operator action. Requires `Authorization: Bearer`.",
+        "admin_update_agent": "[to be translated]:Update an agent's name and/or instructions (managed admin route, M0-1). Requires `Authorization: Bearer`.",
+        "admin_update_provider": "[to be translated]:Update a provider (managed admin route, M0-1②/M0-4). Body follows the official UpdateProviderDto. Requires `Authorization: Bearer`.",
         "chat_completions": "Tạo một chat completion. Định dạng yêu cầu và phản hồi giống OpenAI Chat Completions; đặt `stream: true` để nhận kết quả theo luồng.",
         "count_tokens": "Ước tính số token đầu vào mà một tập tin nhắn theo định dạng Anthropic sử dụng.",
         "generate_content": "Sinh nội dung qua phương thức `generateContent` của Gemini. Định dạng yêu cầu và phản hồi giống Gemini API; `streamGenerateContent` dùng chung đường dẫn này.",

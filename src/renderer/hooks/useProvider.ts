@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from '@data/hooks/useDataApi'
+import { useDataChange, useMutation, useQuery } from '@data/hooks/useDataApi'
 import { loggerService } from '@logger'
 import { getProviderLabelKey } from '@renderer/i18n/label'
 import i18n from '@renderer/i18n/resolver'
@@ -54,6 +54,11 @@ export function useProviders(
 
   const { data, isLoading, refetch } = useQuery('/providers', queryOptions)
 
+  // M0-收尾 S3: react to an external provider write (managed admin route writes
+  // sqlite and broadcasts via `notifyDataApiDataChange`) so the list converges
+  // without a restart. Same official mechanism as useAgents()/useTasks().
+  useDataChange('/providers', () => refetch())
+
   const {
     trigger: createTrigger,
     isLoading: isCreating,
@@ -94,6 +99,17 @@ export function useProviderById(providerId: string | null | undefined) {
     enabled: !!providerId,
     swrOptions: { keepPreviousData: false }
   })
+
+  // M0-收尾 S3: subscribe to the detail endpoint. `useDataChange` registers a
+  // template path; dispatch does an exact endpoint match and carries entityIds,
+  // so we revalidate only when this provider is actually targeted (an effect
+  // with no entityIds claim is treated as "whole collection changed").
+  useDataChange('/providers/:providerId', (effects) => {
+    if (effects.some((e) => !e.entityIds || (resolvedProviderId && e.entityIds.includes(resolvedProviderId)))) {
+      void refetch()
+    }
+  })
+
   return { provider: data, isLoading, error, refetch }
 }
 
@@ -260,7 +276,19 @@ export function useProviderAuthConfig(providerId: string) {
 }
 
 export function useProviderApiKeys(providerId: string) {
-  return useQuery('/providers/:providerId/api-keys', { params: { providerId } })
+  const result = useQuery('/providers/:providerId/api-keys', {
+    params: { providerId }
+  })
+
+  // M0-收尾 S3: react to an external api-keys replacement (admin route
+  // PUT /providers/:id/api-keys) so the keys editor converges without a restart.
+  useDataChange('/providers/:providerId/api-keys', (effects) => {
+    if (effects.some((e) => !e.entityIds || (providerId && e.entityIds.includes(providerId)))) {
+      void result.refetch()
+    }
+  })
+
+  return result
 }
 
 /** Read a sparse projection of the provider's effective registry preset. */

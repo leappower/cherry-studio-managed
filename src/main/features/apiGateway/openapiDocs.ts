@@ -69,7 +69,16 @@ export const DOC_DESCRIPTIONS = {
   list_models: 'apiGateway.docs.operations.list_models',
   messages: 'apiGateway.docs.operations.messages',
   responses: 'apiGateway.docs.operations.responses',
-  search_knowledge_bases: 'apiGateway.docs.operations.search_knowledge_bases'
+  search_knowledge_bases: 'apiGateway.docs.operations.search_knowledge_bases',
+  // M0 managed admin surface (Fork). Each slot is resolved via docDescriptions()
+  // so admin route descriptions follow the same per-language translation path.
+  admin_create_agent: 'apiGateway.docs.operations.admin_create_agent',
+  admin_update_agent: 'apiGateway.docs.operations.admin_update_agent',
+  admin_list_providers: 'apiGateway.docs.operations.admin_list_providers',
+  admin_create_provider: 'apiGateway.docs.operations.admin_create_provider',
+  admin_update_provider: 'apiGateway.docs.operations.admin_update_provider',
+  admin_replace_provider_api_keys: 'apiGateway.docs.operations.admin_replace_provider_api_keys',
+  admin_read_usage: 'apiGateway.docs.operations.admin_read_usage'
 } as const
 
 type DocDescriptionSlot = keyof typeof DOC_DESCRIPTIONS
@@ -92,7 +101,14 @@ function docDescriptions(lang: LanguageVarious): Record<DocDescriptionSlot, stri
     list_models: t('apiGateway.docs.operations.list_models', undefined, lang),
     messages: t('apiGateway.docs.operations.messages', undefined, lang),
     responses: t('apiGateway.docs.operations.responses', undefined, lang),
-    search_knowledge_bases: t('apiGateway.docs.operations.search_knowledge_bases', undefined, lang)
+    search_knowledge_bases: t('apiGateway.docs.operations.search_knowledge_bases', undefined, lang),
+    admin_create_agent: t('apiGateway.docs.operations.admin_create_agent', undefined, lang),
+    admin_update_agent: t('apiGateway.docs.operations.admin_update_agent', undefined, lang),
+    admin_list_providers: t('apiGateway.docs.operations.admin_list_providers', undefined, lang),
+    admin_create_provider: t('apiGateway.docs.operations.admin_create_provider', undefined, lang),
+    admin_update_provider: t('apiGateway.docs.operations.admin_update_provider', undefined, lang),
+    admin_replace_provider_api_keys: t('apiGateway.docs.operations.admin_replace_provider_api_keys', undefined, lang),
+    admin_read_usage: t('apiGateway.docs.operations.admin_read_usage', undefined, lang)
   }
 }
 

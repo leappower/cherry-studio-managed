@@ -18,6 +18,13 @@
       "description": "與 OpenAI、Anthropic 和 Gemini 相容的 Cherry Studio HTTP API，並提供 Cherry 專用端點（模型、知識庫）",
       "language_switcher_label": "說明文件語言",
       "operations": {
+        "admin_create_agent": "[to be translated]:Create an agent (managed admin route, M0-4). Body follows the official CreateAgentCommand schema (name/type/model/instructions/configuration/tools/skills). Requires `Authorization: Bearer`.",
+        "admin_create_provider": "[to be translated]:Create a provider (managed admin route, M0-1②/M0-4). Body follows the official CreateProviderDto. Requires `Authorization: Bearer`.",
+        "admin_list_providers": "[to be translated]:List providers (managed admin route, M0-1②). Optional `?enabled=true|false` filter. Requires `Authorization: Bearer`.",
+        "admin_read_usage": "[to be translated]:Read model + token usage from the local `ai_usage_record` table (managed admin route, M0-5). Supports `?from=` / `?to=` numeric timestamp window filters; returns the full official record fields. Requires `Authorization: Bearer`.",
+        "admin_replace_provider_api_keys": "[to be translated]:Replace a provider's stored API keys (managed admin route, M0-1③). Body: `{ \"keys\": ApiKeyEntry[] }`. Only updates the employee-side provider key field; relay-side revocation is an operator action. Requires `Authorization: Bearer`.",
+        "admin_update_agent": "[to be translated]:Update an agent's name and/or instructions (managed admin route, M0-1). Requires `Authorization: Bearer`.",
+        "admin_update_provider": "[to be translated]:Update a provider (managed admin route, M0-1②/M0-4). Body follows the official UpdateProviderDto. Requires `Authorization: Bearer`.",
         "chat_completions": "建立一次對話補全。請求與回應格式與 OpenAI Chat Completions 一致；設定 `stream: true` 可串流輸出。",
         "count_tokens": "估算一組 Anthropic 格式訊息所佔用的輸入 Token 數量。",
         "generate_content": "透過 Gemini 的 `generateContent` 方法產生內容。請求與回應格式與 Gemini API 一致；`streamGenerateContent` 走同一路徑。",

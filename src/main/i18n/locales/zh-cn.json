@@ -18,6 +18,13 @@
       "description": "与 OpenAI、Anthropic、Gemini 兼容的 Cherry Studio HTTP API，另含 Cherry 专有接口（模型、知识库）",
       "language_switcher_label": "文档语言",
       "operations": {
+        "admin_create_agent": "创建智能体（受管管理员路由，M0-4）。请求体遵循官方 CreateAgentCommand schema（name/type/model/instructions/configuration/tools/skills）。需要 `Authorization: Bearer`。",
+        "admin_create_provider": "创建提供商（受管管理员路由，M0-1②/M0-4）。请求体遵循官方 CreateProviderDto。需要 `Authorization: Bearer`。",
+        "admin_list_providers": "列出提供商（受管管理员路由，M0-1②）。可选 `?enabled=true|false` 过滤。需要 `Authorization: Bearer`。",
+        "admin_read_usage": "从本地 `ai_usage_record` 表读取模型与 token 用量（受管管理员路由，M0-5）。支持 `?from=` / `?to=` 数字时间戳窗口过滤；返回完整的官方记录字段。需要 `Authorization: Bearer`。",
+        "admin_replace_provider_api_keys": "替换提供商存储的 API 密钥（受管管理员路由，M0-1③）。请求体：`{ \"keys\": ApiKeyEntry[] }`。仅更新员工侧提供商的密钥字段；中继侧吊销由运维操作处理。需要 `Authorization: Bearer`。",
+        "admin_update_agent": "更新智能体的名称和/或指令（受管管理员路由，M0-1）。需要 `Authorization: Bearer`。",
+        "admin_update_provider": "更新提供商（受管管理员路由，M0-1②/M0-4）。请求体遵循官方 UpdateProviderDto。需要 `Authorization: Bearer`。",
         "chat_completions": "创建一次对话补全。请求与响应格式与 OpenAI Chat Completions 一致；设置 `stream: true` 可流式输出。",
         "count_tokens": "估算一组 Anthropic 格式消息占用的输入 token 数量。",
         "generate_content": "通过 Gemini 的 `generateContent` 方法生成内容。请求与响应格式与 Gemini API 一致；`streamGenerateContent` 走同一路径。",

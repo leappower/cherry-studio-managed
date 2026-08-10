@@ -65,6 +65,39 @@ vi.mock('@data/services/KnowledgeBaseService', () => ({
   knowledgeBaseService: { list: vi.fn(async () => ({ items: [], total: 0, page: 1 })), getById: vi.fn() }
 }))
 
+// ── M0 admin routes: stub the services + broadcast side-channel that
+// adminRoutes.ts pulls in. These keep admin-route handlers hermetic (no real
+// sqlite, no WindowManager broadcast) while letting tests assert the
+// notification effect set that S2 aligns with the renderer subscriptions.
+const {
+  mockNotifyDataApiDataChange,
+  mockProviderService,
+  mockAgentService,
+  mockAiUsageRecordService,
+  mockCreateAgent
+} = vi.hoisted(() => ({
+  mockNotifyDataApiDataChange: vi.fn(),
+  mockProviderService: {
+    list: vi.fn<any>(() => []),
+    create: vi.fn<any>((dto: any) => ({ id: dto.providerId, name: dto.name })),
+    update: vi.fn<any>((id: string, _dto: any) => ({ id, name: 'updated' })),
+    replaceApiKeys: vi.fn<any>((id: string) => ({ id, name: 'updated' }))
+  },
+  mockAgentService: {
+    updateAgent: vi.fn<any>((id: string, _u: any) => ({ id, name: 'updated', instructions: 'i' }))
+  },
+  mockAiUsageRecordService: {
+    list: vi.fn<any>(() => ({ records: [], total: 0 }))
+  },
+  mockCreateAgent: vi.fn<any>(async () => ({ id: 'agent-1', name: 'A', type: 'claude-code', model: 'openai:gpt-4' }))
+}))
+
+vi.mock('@data/dataApiDataChange', () => ({ notifyDataApiDataChange: mockNotifyDataApiDataChange }))
+vi.mock('@data/services/ProviderService', () => ({ providerService: mockProviderService }))
+vi.mock('@data/services/AgentService', () => ({ agentService: mockAgentService }))
+vi.mock('@data/services/AiUsageRecordService', () => ({ aiUsageRecordService: mockAiUsageRecordService }))
+vi.mock('@main/ai/agents/createAgent', () => ({ createAgent: mockCreateAgent }))
+
 import { buildApp } from '../../app'
 
 const AUTH = { 'content-type': 'application/json', 'x-api-key': 'test-key' }
@@ -74,6 +107,9 @@ function post(app: ReturnType<typeof buildApp>, path: string, body: unknown, hea
 }
 function get(app: ReturnType<typeof buildApp>, path: string, headers: Record<string, string> = AUTH) {
   return app.handle(new Request(`http://localhost${path}`, { method: 'GET', headers }))
+}
+function put(app: ReturnType<typeof buildApp>, path: string, body: unknown, headers: Record<string, string> = AUTH) {
+  return app.handle(new Request(`http://localhost${path}`, { method: 'PUT', headers, body: JSON.stringify(body) }))
 }
 async function read(res: Response): Promise<{ status: number; body: any }> {
   return { status: res.status, body: await res.json() }
@@ -549,6 +585,125 @@ describe('API gateway routes (integration)', () => {
       expect(status).toBe(429)
       expect(body.error.status).toBe('RESOURCE_EXHAUSTED')
       expect(body.error.message).toBe('rate limited')
+    })
+  })
+
+  describe('admin routes (M0 managed surface)', () => {
+    beforeEach(() => {
+      // Admin routes authenticate via the same `scoped` x-api-key / bearer guard as
+      // `/v1`; the default preference mock returns 'test-key', which matches AUTH.
+      mockNotifyDataApiDataChange.mockClear()
+    })
+
+    it('registers the admin routes in the OpenAPI spec', async () => {
+      const { body } = await read(await get(app, '/openapi/json', {}))
+      for (const path of [
+        '/v1/admin/providers',
+        '/v1/admin/providers/{id}',
+        '/v1/admin/providers/{id}/api-keys',
+        '/v1/admin/agents',
+        '/v1/admin/agents/{id}',
+        '/v1/admin/usage'
+      ]) {
+        expect(body.paths[path]).toBeDefined()
+      }
+    })
+
+    it('rejects an unauthenticated admin request with 401', async () => {
+      const { status, body } = await read(await get(app, '/v1/admin/providers', {}))
+      expect(status).toBe(401)
+      expect(body.error).toMatch(/Unauthorized/)
+      expect(mockProviderService.list).not.toHaveBeenCalled()
+    })
+
+    it('rejects an admin request with an invalid key with 403', async () => {
+      const { status } = await read(await get(app, '/v1/admin/providers', { 'x-api-key': 'wrong-key' }))
+      expect(status).toBe(403)
+    })
+
+    it('GET /v1/admin/providers lists providers via the service', async () => {
+      mockProviderService.list.mockReturnValueOnce([{ id: 'openai', name: 'OpenAI' }])
+      const { status, body } = await read(await get(app, '/v1/admin/providers'))
+      expect(status).toBe(200)
+      expect(body).toEqual([{ id: 'openai', name: 'OpenAI' }])
+      expect(mockProviderService.list).toHaveBeenCalledOnce()
+    })
+
+    it('POST /v1/admin/providers creates + broadcasts collection and detail endpoints', async () => {
+      const { status, body } = await read(
+        await post(app, '/v1/admin/providers', { providerId: 'openai', name: 'OpenAI' })
+      )
+      expect(status).toBe(200)
+      expect(body.id).toBe('openai')
+      expect(mockProviderService.create).toHaveBeenCalledOnce()
+      expect(mockNotifyDataApiDataChange).toHaveBeenCalledWith([
+        { endpoint: '/providers', kind: 'projection', entityIds: ['openai'] },
+        { endpoint: '/providers/:providerId', entityIds: ['openai'] }
+      ])
+    })
+
+    it('PUT /v1/admin/providers/:id updates + broadcasts collection and detail endpoints', async () => {
+      const { status } = await read(await put(app, '/v1/admin/providers/openai', { name: 'OpenAI v2' }))
+      expect(status).toBe(200)
+      expect(mockProviderService.update).toHaveBeenCalledWith('openai', { name: 'OpenAI v2' })
+      expect(mockNotifyDataApiDataChange).toHaveBeenCalledWith([
+        { endpoint: '/providers', kind: 'projection', entityIds: ['openai'] },
+        { endpoint: '/providers/:providerId', entityIds: ['openai'] }
+      ])
+    })
+
+    it('PUT /v1/admin/providers/:id/api-keys broadcasts list + detail + api-keys (S2 alignment)', async () => {
+      const { status, body } = await read(
+        await put(app, '/v1/admin/providers/openai/api-keys', {
+          keys: [{ key: 'sk-123', id: 'k1', isEnabled: true }]
+        })
+      )
+      expect(status).toBe(200)
+      expect(body.id).toBe('openai')
+      expect(mockProviderService.replaceApiKeys).toHaveBeenCalledWith('openai', [
+        { key: 'sk-123', id: 'k1', isEnabled: true }
+      ])
+      // S2 must-fix: the api-keys write must notify every surface that has a
+      // renderer useDataChange subscription — list, detail, api-keys. The
+      // effect endpoints are TEMPLATE paths + entityIds (codebase convention),
+      // because dispatchDataChange does exact endpoint match.
+      expect(mockNotifyDataApiDataChange).toHaveBeenCalledWith([
+        { endpoint: '/providers', kind: 'projection', entityIds: ['openai'] },
+        { endpoint: '/providers/:providerId', entityIds: ['openai'] },
+        { endpoint: '/providers/:providerId/api-keys', entityIds: ['openai'] }
+      ])
+    })
+
+    it('GET /v1/admin/usage reads usage via the service', async () => {
+      mockAiUsageRecordService.list.mockReturnValueOnce({ records: [{ providerId: 'openai' }], total: 1 })
+      const { status, body } = await read(await get(app, '/v1/admin/usage'))
+      expect(status).toBe(200)
+      expect(body.records).toHaveLength(1)
+      expect(mockAiUsageRecordService.list).toHaveBeenCalledOnce()
+    })
+
+    it('POST /v1/admin/agents creates + broadcasts collection and detail endpoints', async () => {
+      const { status, body } = await read(
+        await post(app, '/v1/admin/agents', { name: 'AgentA', type: 'claude-code', model: 'openai::gpt-4' })
+      )
+      expect(status).toBe(200)
+      expect(body.id).toBe('agent-1')
+      expect(mockCreateAgent).toHaveBeenCalledOnce()
+      expect(mockNotifyDataApiDataChange).toHaveBeenCalledWith([
+        { endpoint: '/agents', kind: 'projection', entityIds: ['agent-1'] },
+        { endpoint: '/agents/:agentId', entityIds: ['agent-1'] }
+      ])
+    })
+
+    it('PUT /v1/admin/agents/:id updates + broadcasts collection and detail endpoints', async () => {
+      const { status, body } = await read(await put(app, '/v1/admin/agents/agent-1', { name: 'A2' }))
+      expect(status).toBe(200)
+      expect(body.id).toBe('agent-1')
+      expect(mockAgentService.updateAgent).toHaveBeenCalledWith('agent-1', { name: 'A2' })
+      expect(mockNotifyDataApiDataChange).toHaveBeenCalledWith([
+        { endpoint: '/agents', kind: 'projection', entityIds: ['agent-1'] },
+        { endpoint: '/agents/:agentId', entityIds: ['agent-1'] }
+      ])
     })
   })
 })

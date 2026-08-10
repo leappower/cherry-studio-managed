@@ -18,6 +18,13 @@
       "description": "OpenAI-, Anthropic- and Gemini-compatible HTTP API for Cherry Studio, plus Cherry-specific endpoints (models, knowledge bases)",
       "language_switcher_label": "Documentation language",
       "operations": {
+        "admin_create_agent": "Create an agent (managed admin route, M0-4). Body follows the official CreateAgentCommand schema (name/type/model/instructions/configuration/tools/skills). Requires `Authorization: Bearer`.",
+        "admin_create_provider": "Create a provider (managed admin route, M0-1②/M0-4). Body follows the official CreateProviderDto. Requires `Authorization: Bearer`.",
+        "admin_list_providers": "List providers (managed admin route, M0-1②). Optional `?enabled=true|false` filter. Requires `Authorization: Bearer`.",
+        "admin_read_usage": "Read model + token usage from the local `ai_usage_record` table (managed admin route, M0-5). Supports `?from=` / `?to=` numeric timestamp window filters; returns the full official record fields. Requires `Authorization: Bearer`.",
+        "admin_replace_provider_api_keys": "Replace a provider's stored API keys (managed admin route, M0-1③). Body: `{ \"keys\": ApiKeyEntry[] }`. Only updates the employee-side provider key field; relay-side revocation is an operator action. Requires `Authorization: Bearer`.",
+        "admin_update_agent": "Update an agent's name and/or instructions (managed admin route, M0-1). Requires `Authorization: Bearer`.",
+        "admin_update_provider": "Update a provider (managed admin route, M0-1②/M0-4). Body follows the official UpdateProviderDto. Requires `Authorization: Bearer`.",
         "chat_completions": "Create a chat completion. Request and response bodies follow the OpenAI Chat Completions format; set `stream: true` for incremental output.",
         "count_tokens": "Estimate how many input tokens a set of Anthropic-format messages uses.",
         "generate_content": "Generate content through Gemini's `generateContent` method. Request and response bodies follow the Gemini API format; `streamGenerateContent` is served on the same path.",

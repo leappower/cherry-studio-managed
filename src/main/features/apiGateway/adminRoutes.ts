@@ -14,7 +14,7 @@ import { CreateAgentCommandSchema } from '@shared/ipc/schemas/ai'
 import { Elysia } from 'elysia'
 import * as z from 'zod'
 
-import { DOC_TAGS } from './openapiDocs'
+import { DOC_DESCRIPTIONS, DOC_TAGS } from './openapiDocs'
 
 /**
  * Managed admin management routes (Fork). Extends the M0-1 minimal surface
@@ -65,8 +65,13 @@ adminRoutes.put(
       return { error: `Not Found: Agent ${params.id}` }
     }
 
-    // Commit done — broadcast the `/agents` projection change.
-    notifyDataApiDataChange([{ endpoint: '/agents', kind: 'projection' }])
+    // Commit done — broadcast the `/agents` projection change plus the
+    // entity detail endpoint (M0-收尾 S2: detail-page subscribers on
+    // `/agents/:agentId` must converge too).
+    notifyDataApiDataChange([
+      { endpoint: '/agents', kind: 'projection', entityIds: [updated.id] },
+      { endpoint: '/agents/:agentId', entityIds: [updated.id] }
+    ])
 
     return {
       id: updated.id,
@@ -80,8 +85,7 @@ adminRoutes.put(
     detail: {
       tags: [DOC_TAGS.cherry],
       summary: 'Admin: update agent',
-      description:
-        "Update an agent's name and/or instructions (managed admin route, M0-1). Requires `Authorization: Bearer`."
+      description: DOC_DESCRIPTIONS.admin_update_agent
     }
   }
 )
@@ -100,8 +104,12 @@ adminRoutes.post(
     }
 
     const created = await createAgent(parsed.data)
-    // Commit done — broadcast the `/agents` projection change.
-    notifyDataApiDataChange([{ endpoint: '/agents', kind: 'projection' }])
+    // Commit done — broadcast the `/agents` projection change plus the
+    // entity detail endpoint (M0-收尾 S2).
+    notifyDataApiDataChange([
+      { endpoint: '/agents', kind: 'projection', entityIds: [created.id] },
+      { endpoint: '/agents/:agentId', entityIds: [created.id] }
+    ])
 
     return {
       id: created.id,
@@ -116,8 +124,7 @@ adminRoutes.post(
     detail: {
       tags: [DOC_TAGS.cherry],
       summary: 'Admin: create agent',
-      description:
-        'Create an agent (managed admin route, M0-4). Body follows the official CreateAgentCommand schema (name/type/model/instructions/configuration/tools/skills). Requires `Authorization: Bearer`.'
+      description: DOC_DESCRIPTIONS.admin_create_agent
     }
   }
 )
@@ -141,8 +148,7 @@ adminRoutes.get(
     detail: {
       tags: [DOC_TAGS.cherry],
       summary: 'Admin: list providers',
-      description:
-        'List providers (managed admin route, M0-1②). Optional `?enabled=true|false` filter. Requires `Authorization: Bearer`.'
+      description: DOC_DESCRIPTIONS.admin_list_providers
     }
   }
 )
@@ -157,15 +163,19 @@ adminRoutes.post(
       return { error: 'Bad Request: ' + parsed.error.issues.map((i) => i.message).join('; ') }
     }
     const created = providerService.create(parsed.data)
-    notifyDataApiDataChange([{ endpoint: '/providers', kind: 'projection' }])
+    // M0-收尾 S2: broadcast the collection plus the new entity detail endpoint
+    // so list AND detail/api-keys subscribers converge.
+    notifyDataApiDataChange([
+      { endpoint: '/providers', kind: 'projection', entityIds: [created.id] },
+      { endpoint: '/providers/:providerId', entityIds: [created.id] }
+    ])
     return created
   },
   {
     detail: {
       tags: [DOC_TAGS.cherry],
       summary: 'Admin: create provider',
-      description:
-        'Create a provider (managed admin route, M0-1②/M0-4). Body follows the official CreateProviderDto. Requires `Authorization: Bearer`.'
+      description: DOC_DESCRIPTIONS.admin_create_provider
     }
   }
 )
@@ -180,7 +190,11 @@ adminRoutes.put(
       return { error: 'Bad Request: ' + parsed.error.issues.map((i) => i.message).join('; ') }
     }
     const updated = providerService.update(params.id, parsed.data)
-    notifyDataApiDataChange([{ endpoint: '/providers', kind: 'projection' }])
+    // M0-收尾 S2: broadcast the collection plus the entity detail endpoint.
+    notifyDataApiDataChange([
+      { endpoint: '/providers', kind: 'projection', entityIds: [params.id] },
+      { endpoint: '/providers/:providerId', entityIds: [params.id] }
+    ])
     return updated
   },
   {
@@ -188,8 +202,7 @@ adminRoutes.put(
     detail: {
       tags: [DOC_TAGS.cherry],
       summary: 'Admin: update provider',
-      description:
-        'Update a provider (managed admin route, M0-1②/M0-4). Body follows the official UpdateProviderDto. Requires `Authorization: Bearer`.'
+      description: DOC_DESCRIPTIONS.admin_update_provider
     }
   }
 )
@@ -211,7 +224,18 @@ adminRoutes.put(
       return { error: 'Bad Request: ' + parsed.error.issues.map((i) => i.message).join('; ') }
     }
     const updated = providerService.replaceApiKeys(params.id, parsed.data.keys)
-    notifyDataApiDataChange([{ endpoint: '/providers', kind: 'projection' }])
+    // M0-收尾 S2 (审计官 must-fix): the api-keys write mutates the provider's
+    // apiKeys field, which backs the `/providers/:providerId/api-keys` and
+    // `/providers/:providerId` read models. Broadcast all three so the list,
+    // detail, and api-keys surfaces converge. Dispatch is exact-match on
+    // endpoint, so we broadcast TEMPLATE paths + entityIds (the codebase-wide
+    // convention) — not concrete paths, which would never match a renderer
+    // subscription like `useDataChange('/providers/:providerId/api-keys', …)`.
+    notifyDataApiDataChange([
+      { endpoint: '/providers', kind: 'projection', entityIds: [params.id] },
+      { endpoint: '/providers/:providerId', entityIds: [params.id] },
+      { endpoint: '/providers/:providerId/api-keys', entityIds: [params.id] }
+    ])
     return updated
   },
   {
@@ -219,8 +243,7 @@ adminRoutes.put(
     detail: {
       tags: [DOC_TAGS.cherry],
       summary: 'Admin: replace provider API keys',
-      description:
-        'Replace a provider\'s stored API keys (managed admin route, M0-1③). Body: `{ "keys": ApiKeyEntry[] }`. Only updates the employee-side provider key field; relay-side revocation is an operator action. Requires `Authorization: Bearer`.'
+      description: DOC_DESCRIPTIONS.admin_replace_provider_api_keys
     }
   }
 )
@@ -258,8 +281,7 @@ adminRoutes.get(
     detail: {
       tags: [DOC_TAGS.cherry],
       summary: 'Admin: read usage',
-      description:
-        'Read model + token usage from the local `ai_usage_record` table (managed admin route, M0-5). Supports `?from=` / `?to=` numeric timestamp window filters; returns the full official record fields. Requires `Authorization: Bearer`.'
+      description: DOC_DESCRIPTIONS.admin_read_usage
     }
   }
 )

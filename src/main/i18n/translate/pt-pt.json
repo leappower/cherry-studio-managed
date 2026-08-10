@@ -18,6 +18,13 @@
       "description": "API HTTP do Cherry Studio compatível com OpenAI, Anthropic e Gemini, além dos endpoints próprios do Cherry (modelos, bases de conhecimento)",
       "language_switcher_label": "Idioma da documentação",
       "operations": {
+        "admin_create_agent": "[to be translated]:Create an agent (managed admin route, M0-4). Body follows the official CreateAgentCommand schema (name/type/model/instructions/configuration/tools/skills). Requires `Authorization: Bearer`.",
+        "admin_create_provider": "[to be translated]:Create a provider (managed admin route, M0-1②/M0-4). Body follows the official CreateProviderDto. Requires `Authorization: Bearer`.",
+        "admin_list_providers": "[to be translated]:List providers (managed admin route, M0-1②). Optional `?enabled=true|false` filter. Requires `Authorization: Bearer`.",
+        "admin_read_usage": "[to be translated]:Read model + token usage from the local `ai_usage_record` table (managed admin route, M0-5). Supports `?from=` / `?to=` numeric timestamp window filters; returns the full official record fields. Requires `Authorization: Bearer`.",
+        "admin_replace_provider_api_keys": "[to be translated]:Replace a provider's stored API keys (managed admin route, M0-1③). Body: `{ \"keys\": ApiKeyEntry[] }`. Only updates the employee-side provider key field; relay-side revocation is an operator action. Requires `Authorization: Bearer`.",
+        "admin_update_agent": "[to be translated]:Update an agent's name and/or instructions (managed admin route, M0-1). Requires `Authorization: Bearer`.",
+        "admin_update_provider": "[to be translated]:Update a provider (managed admin route, M0-1②/M0-4). Body follows the official UpdateProviderDto. Requires `Authorization: Bearer`.",
         "chat_completions": "Cria uma conclusão de conversa. Os corpos do pedido e da resposta seguem o formato OpenAI Chat Completions; com `stream: true` a saída é incremental.",
         "count_tokens": "Estima quantos tokens de entrada são consumidos por um conjunto de mensagens no formato Anthropic.",
         "generate_content": "Gera conteúdo através do método `generateContent` do Gemini. Os corpos do pedido e da resposta seguem o formato da API Gemini; `streamGenerateContent` é servido no mesmo caminho.",
