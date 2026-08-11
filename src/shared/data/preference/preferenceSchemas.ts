@@ -48,6 +48,8 @@ export interface PreferenceSchemas {
     'app.developer_mode.enabled': boolean
     // redux/settings/autoCheckUpdate
     'app.dist.auto_update.enabled': boolean
+    // fork-F11: managed build update feed override (null = default/managed-disable)
+    'app.dist.auto_update.feed_url': string | null
     // redux/settings/testChannel
     'app.dist.test_plan.channel': PreferenceTypes.UpgradeChannel
     // redux/settings/testPlan
@@ -544,6 +546,7 @@ export const DefaultPreferences: PreferenceSchemas = {
     'agent.session.position': 'left',
     'app.developer_mode.enabled': false,
     'app.dist.auto_update.enabled': true,
+    'app.dist.auto_update.feed_url': null,
     'app.dist.test_plan.channel': PreferenceTypes.UpgradeChannel.LATEST,
     'app.dist.test_plan.enabled': false,
     'app.language': null,
