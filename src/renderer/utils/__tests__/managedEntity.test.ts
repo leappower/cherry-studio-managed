@@ -4,15 +4,15 @@ import { isManagedEntity } from '../managedEntity'
 
 describe('isManagedEntity', () => {
   it('returns true when isManaged is true', () => {
-    expect(isManagedEntity({ id: 'cherryai', isManaged: true })).toBe(true)
+    expect(isManagedEntity({ isManaged: true })).toBe(true)
   })
 
   it('returns false when isManaged is false', () => {
-    expect(isManagedEntity({ id: 'openai', isManaged: false })).toBe(false)
+    expect(isManagedEntity({ isManaged: false })).toBe(false)
   })
 
   it('returns false when isManaged is absent (default case)', () => {
-    expect(isManagedEntity({ id: 'openai' })).toBe(false)
+    expect(isManagedEntity({})).toBe(false)
   })
 
   it('returns false for null / undefined entities', () => {
