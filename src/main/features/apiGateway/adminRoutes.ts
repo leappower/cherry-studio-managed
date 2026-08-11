@@ -1,3 +1,6 @@
+import { readdir } from 'node:fs/promises'
+import path from 'node:path'
+
 import { application } from '@application'
 import { notifyDataApiDataChange } from '@data/dataApiDataChange'
 import { agentGlobalSkillService } from '@data/services/AgentGlobalSkillService'
@@ -5,8 +8,9 @@ import { agentService } from '@data/services/AgentService'
 import { aiUsageRecordService } from '@data/services/AiUsageRecordService'
 import { mcpServerService } from '@data/services/McpServerService'
 import { providerService } from '@data/services/ProviderService'
-import { removeAgentDataDirectory } from '@main/ai/agents/agentDataDirectory'
+import { assertAgentStoragePath, removeAgentDataDirectory } from '@main/ai/agents/agentDataDirectory'
 import { createAgent } from '@main/ai/agents/createAgent'
+import { isSameOrInside, lstat, read } from '@main/utils/file'
 import { OrderBatchRequestSchema } from '@shared/data/api/schemas/_endpointHelpers'
 import { AiUsageRecordListQuerySchema } from '@shared/data/api/schemas/aiUsageRecords'
 import { ListMcpServersQuerySchema } from '@shared/data/api/schemas/mcpServers'
@@ -526,6 +530,130 @@ adminRoutes.get(
       tags: [DOC_TAGS.cherry],
       summary: 'Admin: get MCP server',
       description: DOC_DESCRIPTIONS.admin_get_mcp_server
+    }
+  }
+)
+
+// ---------------------------------------------------------------------------
+// F-7b — agent working-directory collection (managed admin, read-only).
+//
+// "工作目录" (working directory) is defined here as the agent's workspace
+// paths bound to its sessions via the agent_workspace table (resolved through
+// AgentGlobalSkillService.listAgentSessionWorkspacePaths — DB-backed, the
+// authoritative accessible set). No plan doc gives a different definitive
+// answer, so we use agent_workspace paths first (per task fallback) and treat
+// those as the accessible_paths for containment. Every path read is guarded
+// by assertAgentStoragePath (symlink-escape rejection under the workspace
+// root) + isSameOrInside (containment within an accessible workspace path).
+// Read-only: no broadcast needed.
+// ---------------------------------------------------------------------------
+
+/**
+ * Enumerate a directory (one level) under an accessible workspace path,
+ * returning name / kind / size / modifiedAt for each entry. The target dir is
+ * asserted to be a real non-symlink directory inside one of the accessible
+ * workspace roots before listing.
+ */
+async function listWorkspaceDirectoryEntries(
+  accessiblePaths: readonly string[],
+  dirPath: string
+): Promise<Array<{ name: string; kind: 'file' | 'directory'; size: number; modifiedAt: number }>> {
+  const resolvedDir = path.resolve(dirPath)
+  const containingRoot = accessiblePaths.find((root) => isSameOrInside(resolvedDir, path.resolve(root)))
+  if (!containingRoot) {
+    throw new Error(`Path is outside the agent's accessible workspace paths: ${dirPath}`)
+  }
+  // Reuse the symlink-escape guard: the requested dir must be a real (non-
+  // symlink) directory contained by the accessible workspace root.
+  await assertAgentStoragePath(path.resolve(containingRoot), resolvedDir)
+
+  const entries = await readdir(resolvedDir, { withFileTypes: true })
+  const out: Array<{ name: string; kind: 'file' | 'directory'; size: number; modifiedAt: number }> = []
+  for (const entry of entries) {
+    const fullPath = path.join(resolvedDir, entry.name)
+    // Skip entries that resolve outside the accessible root (symlink escape).
+    if (!isSameOrInside(fullPath, path.resolve(containingRoot))) continue
+    try {
+      const st = await lstat(fullPath as never)
+      out.push({
+        name: entry.name,
+        kind: entry.isDirectory() ? 'directory' : 'file',
+        size: st.size,
+        modifiedAt: st.modifiedAt
+      })
+    } catch {
+      // Unreadable / transient entry — omit rather than fail the whole listing.
+    }
+  }
+  out.sort((a, b) => a.name.localeCompare(b.name))
+  return out
+}
+
+/** List agent workspaces / working-directory collection (F-7b). */
+adminRoutes.get(
+  '/agents/:id/files',
+  async ({ params, query, set }) => {
+    const agent = agentService.getAgent(params.id)
+    if (!agent) {
+      set.status = 404
+      return { error: `Not Found: Agent ${params.id}` }
+    }
+
+    const accessiblePaths = agentGlobalSkillService.listAgentSessionWorkspacePaths(params.id)
+    if (accessiblePaths.length === 0) {
+      return { agentId: params.id, accessiblePaths: [], entries: [] }
+    }
+
+    // Optional ?file= reads a specific file's text content (must be inside an
+    // accessible workspace path). Returns 404 if the target escapes them.
+    if (query?.file) {
+      const filePath = path.resolve(query.file)
+      const containingRoot = accessiblePaths.find((root) => isSameOrInside(filePath, path.resolve(root)))
+      if (!containingRoot) {
+        set.status = 404
+        return { error: `Not Found: file ${query.file} is outside the agent's accessible workspace paths` }
+      }
+      await assertAgentStoragePath(path.resolve(containingRoot), filePath)
+      try {
+        const content = await read(filePath as never)
+        return { agentId: params.id, path: filePath, content }
+      } catch {
+        set.status = 404
+        return { error: `Not Found: file ${query.file}` }
+      }
+    }
+
+    // Optional ?path= enumerates a subdirectory inside an accessible workspace
+    // path; without it, each accessible workspace root is listed.
+    const targets = query?.path ? [query.path] : accessiblePaths
+    const entries: Array<{
+      workspacePath: string
+      name: string
+      kind: 'file' | 'directory'
+      size: number
+      modifiedAt: number
+    }> = []
+    for (const target of targets) {
+      try {
+        const listed = await listWorkspaceDirectoryEntries(accessiblePaths, target)
+        for (const e of listed) {
+          entries.push({ workspacePath: path.resolve(target), ...e })
+        }
+      } catch {
+        // Workspace root that is missing / not a directory is reported but not
+        // fatal — enumeration continues across the remaining accessible paths.
+        continue
+      }
+    }
+
+    return { agentId: params.id, accessiblePaths, entries }
+  },
+  {
+    params: z.object({ id: z.string().min(1) }),
+    detail: {
+      tags: [DOC_TAGS.cherry],
+      summary: 'Admin: list agent working-directory files',
+      description: DOC_DESCRIPTIONS.admin_list_agent_files
     }
   }
 )
