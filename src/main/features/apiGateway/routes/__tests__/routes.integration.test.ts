@@ -101,10 +101,12 @@ const {
   },
   mockCreateAgent: vi.fn<any>(async () => ({ id: 'agent-1', name: 'A', type: 'claude-code', model: 'openai:gpt-4' })),
   mockMcpServerService: {
-    list: vi.fn<any>(() => ({ items: [], total: 0, page: 1 }))
+    list: vi.fn<any>(() => ({ items: [], total: 0, page: 1 })),
+    getById: vi.fn<any>((id: string) => ({ id, name: 'MCP A' }))
   },
   mockAgentGlobalSkillService: {
-    list: vi.fn<any>(() => [])
+    list: vi.fn<any>(() => []),
+    listAgentSessionWorkspacePaths: vi.fn<any>(() => [])
   },
   mockAgentWorkspaceService: {
     list: vi.fn<any>(() => [])
@@ -636,7 +638,11 @@ describe('API gateway routes (integration)', () => {
         '/v1/admin/agents/{id}',
         '/v1/admin/agents/reorder',
         '/v1/admin/providers/batchUpsert',
-        '/v1/admin/usage'
+        '/v1/admin/usage',
+        '/v1/admin/skills',
+        '/v1/admin/mcp',
+        '/v1/admin/mcp/{id}',
+        '/v1/admin/agents/{id}/files'
       ]) {
         expect(body.paths[path]).toBeDefined()
       }
@@ -833,6 +839,99 @@ describe('API gateway routes (integration)', () => {
         { endpoint: '/providers/:providerId', entityIds: ['openai'] },
         { endpoint: '/providers/:providerId/api-keys', entityIds: ['openai'] }
       ])
+    })
+
+    it('GET /v1/admin/skills lists skills via the service (F-6, read-only, no broadcast)', async () => {
+      mockAgentGlobalSkillService.list.mockReturnValueOnce([{ id: 's1', name: 'Skill A' }])
+      const { status, body } = await read(await get(app, '/v1/admin/skills', AUTH_ADMIN))
+      expect(status).toBe(200)
+      expect(body).toEqual([{ id: 's1', name: 'Skill A' }])
+      expect(mockAgentGlobalSkillService.list).toHaveBeenCalledOnce()
+      expect(mockNotifyDataApiDataChange).not.toHaveBeenCalled()
+    })
+
+    it('GET /v1/admin/mcp lists MCP servers via the service (F-6, read-only, no broadcast)', async () => {
+      mockMcpServerService.list.mockReturnValueOnce({ items: [{ id: 'm1', name: 'MCP A' }], total: 1, page: 1 })
+      const { status, body } = await read(await get(app, '/v1/admin/mcp', AUTH_ADMIN))
+      expect(status).toBe(200)
+      expect(body.items).toHaveLength(1)
+      expect(mockMcpServerService.list).toHaveBeenCalledOnce()
+      expect(mockNotifyDataApiDataChange).not.toHaveBeenCalled()
+    })
+
+    it('GET /v1/admin/mcp/:id returns the MCP server via the service (F-6)', async () => {
+      mockMcpServerService.getById.mockReturnValueOnce({ id: 'm1', name: 'MCP A' })
+      const { status, body } = await read(await get(app, '/v1/admin/mcp/m1', AUTH_ADMIN))
+      expect(status).toBe(200)
+      expect(body.id).toBe('m1')
+      expect(mockMcpServerService.getById).toHaveBeenCalledWith('m1')
+    })
+
+    it('GET /v1/admin/mcp/:id returns 404 when the MCP server is absent (F-6)', async () => {
+      mockMcpServerService.getById.mockImplementationOnce(() => {
+        throw new Error('not found')
+      })
+      const { status } = await read(await get(app, '/v1/admin/mcp/nope', AUTH_ADMIN))
+      expect(status).toBe(404)
+    })
+
+    it('GET /v1/admin/agents/:id/files returns 404 when the agent is absent (F-7b)', async () => {
+      mockAgentService.getAgent.mockReturnValueOnce(null)
+      const { status } = await read(await get(app, '/v1/admin/agents/nope/files', AUTH_ADMIN))
+      expect(status).toBe(404)
+    })
+
+    it('GET /v1/admin/agents/:id/files returns empty when the agent has no workspace (F-7b)', async () => {
+      mockAgentService.getAgent.mockReturnValueOnce({ id: 'a1', name: 'A', instructions: 'i' })
+      mockAgentGlobalSkillService.listAgentSessionWorkspacePaths.mockReturnValueOnce([])
+      const { status, body } = await read(await get(app, '/v1/admin/agents/a1/files', AUTH_ADMIN))
+      expect(status).toBe(200)
+      expect(body.agentId).toBe('a1')
+      expect(body.accessiblePaths).toEqual([])
+      expect(body.entries).toEqual([])
+    })
+
+    it('GET /v1/admin/agents/:id/files?file= rejects traversal outside accessible paths (F-7b)', async () => {
+      mockAgentService.getAgent.mockReturnValueOnce({ id: 'a1', name: 'A', instructions: 'i' })
+      mockAgentGlobalSkillService.listAgentSessionWorkspacePaths.mockReturnValueOnce(['/tmp/ws-a1'])
+      const { status } = await read(await get(app, '/v1/admin/agents/a1/files?file=/etc/passwd', AUTH_ADMIN))
+      expect(status).toBe(404)
+    })
+
+    it('GET /v1/admin/agents/:id/files enumerates a workspace dir via the real FS (F-7b)', async () => {
+      const { mkdtempSync, writeFileSync } = await import('node:fs')
+      const { tmpdir } = await import('node:os')
+      const { join } = await import('node:path')
+      const ws = mkdtempSync(join(tmpdir(), 'admin-f7b-'))
+      writeFileSync(join(ws, 'notes.md'), 'hello')
+      writeFileSync(join(ws, 'data.txt'), 'x')
+
+      mockAgentService.getAgent.mockReturnValueOnce({ id: 'a1', name: 'A', instructions: 'i' })
+      mockAgentGlobalSkillService.listAgentSessionWorkspacePaths.mockReturnValueOnce([ws])
+
+      const { status, body } = await read(await get(app, '/v1/admin/agents/a1/files', AUTH_ADMIN))
+      expect(status).toBe(200)
+      expect(body.accessiblePaths).toEqual([ws])
+      const names = body.entries.map((e: { name: string }) => e.name)
+      expect(names).toContain('notes.md')
+      expect(names).toContain('data.txt')
+    })
+
+    it('GET /v1/admin/agents/:id/files?file= reads file content within an accessible path (F-7b)', async () => {
+      const { mkdtempSync, writeFileSync } = await import('node:fs')
+      const { tmpdir } = await import('node:os')
+      const { join } = await import('node:path')
+      const ws = mkdtempSync(join(tmpdir(), 'admin-f7b-read-'))
+      writeFileSync(join(ws, 'notes.md'), 'hello content')
+
+      mockAgentService.getAgent.mockReturnValueOnce({ id: 'a1', name: 'A', instructions: 'i' })
+      mockAgentGlobalSkillService.listAgentSessionWorkspacePaths.mockReturnValueOnce([ws])
+
+      const { status, body } = await read(
+        await get(app, `/v1/admin/agents/a1/files?file=${encodeURIComponent(join(ws, 'notes.md'))}`, AUTH_ADMIN)
+      )
+      expect(status).toBe(200)
+      expect(body.content).toBe('hello content')
     })
   })
 })
