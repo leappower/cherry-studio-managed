@@ -265,7 +265,8 @@ function rowToRuntimeProvider(row: UserProviderRow): Provider {
     authType,
     apiFeatures,
     settings,
-    isEnabled: row.isEnabled
+    isEnabled: row.isEnabled,
+    isManaged: managedRegistryService.isManaged('provider', row.providerId)
   }
 }
 

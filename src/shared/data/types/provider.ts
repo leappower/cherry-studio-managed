@@ -331,7 +331,14 @@ export const ProviderSchema = z.object({
   /** Provider settings */
   settings: ProviderSettingsSchema,
   /** Whether this provider is enabled */
-  isEnabled: z.boolean()
+  isEnabled: z.boolean(),
+  /**
+   * Whether this provider is managed (immutable by the user). Injected
+   * main-side from the managed registry (F-10). Managed providers are hidden
+   * from delete and read-only in the UI; the server independently rejects
+   * create/update/delete mutations as the safety backstop (F-8). Absent ⇒ false.
+   */
+  isManaged: z.boolean().optional()
 })
 
 export type Provider = z.infer<typeof ProviderSchema>
