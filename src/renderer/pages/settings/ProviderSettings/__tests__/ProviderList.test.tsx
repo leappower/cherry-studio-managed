@@ -464,6 +464,6 @@ describe('ProviderList', () => {
 
     fireEvent.click(screen.getByTestId('provider-list-delete-openai'))
 
-    await vi.waitFor(() => expect(deleteProviderMock).toHaveBeenCalledWith('openai'))
+    await vi.waitFor(() => expect(deleteProviderMock).toHaveBeenCalledWith(expect.objectContaining({ id: 'openai' })))
   })
 })
