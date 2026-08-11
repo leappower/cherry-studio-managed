@@ -10,7 +10,7 @@ vi.mock('@renderer/hooks/useProvider', () => ({
 }))
 
 const deleteProviderByIdMock = vi.fn()
-const providerId = 'openai'
+const provider = { id: 'openai' } as any
 
 describe('useProviderDelete', () => {
   beforeEach(() => {
@@ -25,9 +25,19 @@ describe('useProviderDelete', () => {
     const { result } = renderHook(() => useProviderDelete())
 
     await act(async () => {
-      await result.current.deleteProvider(providerId)
+      await result.current.deleteProvider(provider)
     })
 
     expect(deleteProviderByIdMock).toHaveBeenCalledWith('openai')
+  })
+
+  it('does not delete a managed provider (F-10 double-safety guard)', async () => {
+    const { result } = renderHook(() => useProviderDelete())
+
+    await act(async () => {
+      await result.current.deleteProvider({ id: 'managed-provider', isManaged: true } as any)
+    })
+
+    expect(deleteProviderByIdMock).not.toHaveBeenCalled()
   })
 })

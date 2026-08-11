@@ -2,6 +2,7 @@ import { CommandContextMenu, type CommandContextMenuExtraItem, CommandPopupMenu 
 import ModelNotesPopup from '@renderer/pages/settings/ProviderSettings/ModelNotesPopup'
 import { providerListClasses } from '@renderer/pages/settings/ProviderSettings/primitives/ProviderSettingsPrimitives'
 import { getFancyProviderName } from '@renderer/pages/settings/ProviderSettings/utils/providerDisplay'
+import { isManagedEntity } from '@renderer/utils/managedEntity'
 import type { Provider } from '@shared/data/types/provider'
 import { CopyPlus, Edit, Trash2, UserPen } from 'lucide-react'
 import { useMemo } from 'react'
@@ -40,9 +41,12 @@ export default function ProviderListItemWithContextMenu({
 }: ProviderListItemWithContextMenuProps) {
   const { t } = useTranslation()
 
+  // Managed providers are immutable (F-10): no delete, and no edit entry point.
+  const managed = isManagedEntity(provider)
+
   const menuItems = useMemo<readonly CommandContextMenuExtraItem[]>(() => {
     const items: CommandContextMenuExtraItem[] = []
-    if (showManagementActions) {
+    if (showManagementActions && !managed) {
       items.push({
         type: 'item',
         id: 'edit',
@@ -67,7 +71,7 @@ export default function ProviderListItemWithContextMenu({
       icon: <UserPen size={14} />,
       onSelect: () => ModelNotesPopup.show({ providerId: provider.id })
     })
-    if (showManagementActions) {
+    if (showManagementActions && !managed) {
       items.push({
         type: 'item',
         id: 'delete',
@@ -78,7 +82,7 @@ export default function ProviderListItemWithContextMenu({
       })
     }
     return items
-  }, [onDelete, onDuplicate, onEdit, provider.id, showManagementActions, t])
+  }, [managed, onDelete, onDuplicate, onEdit, provider.id, showManagementActions, t])
 
   // Right-click stays uncontrolled — Radix handles cross-popup mutex naturally.
   // The more-button popup remains controlled so the parent's single-row-active-at-a-time

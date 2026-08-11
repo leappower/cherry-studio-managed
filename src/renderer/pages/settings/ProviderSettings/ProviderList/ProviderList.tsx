@@ -10,6 +10,7 @@ import {
   matchKeywordsInProvider
 } from '@renderer/pages/settings/ProviderSettings/utils/providerDisplay'
 import { toast } from '@renderer/services/toast'
+import { isManagedEntity } from '@renderer/utils/managedEntity'
 import type { Provider } from '@shared/data/types/provider'
 import { canManageProvider } from '@shared/utils/provider'
 import { Plus } from 'lucide-react'
@@ -233,20 +234,23 @@ export default function ProviderList({ selectedProviderId, filterModeHint, onSel
   )
 
   const handleDeleteProvider = useCallback(
-    async (providerId: Provider['id']) => {
+    async (provider: Provider) => {
       await ConfirmActionPopup.show({
         title: t('settings.provider.delete.title'),
         content: t('settings.provider.delete.content'),
         danger: true,
         okText: t('common.delete'),
-        action: () => deleteProvider(providerId)
+        action: () => deleteProvider(provider)
       })
     },
     [deleteProvider, t]
   )
 
   const renderProviderItem = (provider: Provider, _index: number, state: ProviderListContentItemState) => {
-    const showManagementActions = (providerCounts.get(provider.id) ?? 0) > 1 || canManageProvider(provider)
+    // Managed providers (F-10) are immutable: no edit/delete management actions.
+    const managed = isManagedEntity(provider)
+    const showManagementActions =
+      !managed && ((providerCounts.get(provider.id) ?? 0) > 1 || canManageProvider(provider))
     const selected = provider.id === selectedProviderId
 
     return (
@@ -257,7 +261,7 @@ export default function ProviderList({ selectedProviderId, filterModeHint, onSel
         onContextOpenChange={(open) => setContextProviderId(open ? provider.id : null)}
         onSelect={() => onSelectProvider(provider.id)}
         onEdit={() => startEdit(provider)}
-        onDelete={() => handleDeleteProvider(provider.id)}
+        onDelete={() => handleDeleteProvider(provider)}
         onDuplicate={
           provider.presetProviderId && !groupedPresetIds.has(provider.presetProviderId)
             ? () => startAddFrom(provider)
