@@ -164,6 +164,18 @@ class ManagedRegistryService {
     this.ensureDbLoaded()
     return EMBEDDED_DEFAULT_MANAGED[kind].includes(id) || this.extraManaged[kind].has(id)
   }
+
+  /**
+   * Internal test hook: register an extra managed entry without a real
+   * managed_registry.db (the Sidecar-owned db isn't materialised in unit
+   * tests). Mirrors what `readManagedEntries()` would load from the db. Not
+   * part of the public API — reserved for tests validating generalized
+   * protection of custom managed entities.
+   */
+  _registerManagedForTest(kind: ManagedKind, id: string): void {
+    this.ensureDbLoaded()
+    this.extraManaged[kind].add(id)
+  }
 }
 
 export const managedRegistryService = new ManagedRegistryService()

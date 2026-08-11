@@ -3,6 +3,7 @@ import '@data/services/ProviderRegistryService'
 
 import { application } from '@application'
 import { userProviderTable } from '@data/db/schemas/userProvider'
+import { managedRegistryService } from '@data/services/ManagedRegistryService'
 import { providerService } from '@data/services/ProviderService'
 import { ErrorCode } from '@shared/data/api/errors'
 import { CHERRYAI_PROVIDER_ID } from '@shared/data/presets/cherryai'
@@ -149,6 +150,28 @@ describe('ProviderService.update', () => {
       .select()
       .from(userProviderTable)
       .where(eq(userProviderTable.providerId, CHERRYAI_PROVIDER_ID))
+    expect(row.isEnabled).toBe(true)
+  })
+
+  it('rejects mutations for a custom managed provider registered in the registry (F-8 AC3)', async () => {
+    const customManagedId = 'custom-managed-provider'
+    managedRegistryService._registerManagedForTest('provider', customManagedId)
+
+    await dbh.db.insert(userProviderTable).values({
+      providerId: customManagedId,
+      name: 'Custom Managed',
+      orderKey: 'a0',
+      isEnabled: true
+    })
+
+    expect(() => providerService.update(customManagedId, { isEnabled: false })).toThrowError(
+      expect.objectContaining({ code: ErrorCode.INVALID_OPERATION })
+    )
+    expect(() => providerService.move(customManagedId, { position: 'first' })).toThrowError(
+      expect.objectContaining({ code: ErrorCode.INVALID_OPERATION })
+    )
+
+    const [row] = await dbh.db.select().from(userProviderTable).where(eq(userProviderTable.providerId, customManagedId))
     expect(row.isEnabled).toBe(true)
   })
 
