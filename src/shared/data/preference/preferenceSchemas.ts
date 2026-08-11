@@ -346,6 +346,8 @@ export interface PreferenceSchemas {
     'feature.api_gateway.enabled': boolean
     // redux/settings/apiServer.host
     'feature.api_gateway.host': string
+    // Fork F-3: independent managed admin key (Bearer-only, /v1/admin/* scope)
+    'feature.api_gateway.managed_key': string | null
     // redux/settings/apiServer.port
     'feature.api_gateway.port': number
     // target-key-definitions/complex/complex
@@ -691,6 +693,7 @@ export const DefaultPreferences: PreferenceSchemas = {
     'feature.api_gateway.api_key': null,
     'feature.api_gateway.enabled': false,
     'feature.api_gateway.host': '127.0.0.1',
+    'feature.api_gateway.managed_key': null,
     'feature.api_gateway.port': 23333,
     'feature.binary.install_settings': {
       githubMirror: '',

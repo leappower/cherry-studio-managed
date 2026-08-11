@@ -109,11 +109,14 @@ describe('authorizeApiRequest', () => {
     })
 
     it('authenticates with a valid Google (x-goog-api-key / ?key=) credential', () => {
-      expect(authorizeApiRequest(undefined, undefined, validApiKey)).toBeUndefined()
+      expect(authorizeApiRequest(undefined, undefined, { googleApiKey: validApiKey })).toBeUndefined()
     })
 
     it('returns 403 with an invalid Google credential', () => {
-      expect(authorizeApiRequest(undefined, undefined, 'invalid-key')).toEqual({ status: 403, error: 'Forbidden' })
+      expect(authorizeApiRequest(undefined, undefined, { googleApiKey: 'invalid-key' })).toEqual({
+        status: 403,
+        error: 'Forbidden'
+      })
     })
 
     it('returns 401 when no credential is present across all three sources', () => {
@@ -124,8 +127,8 @@ describe('authorizeApiRequest', () => {
     })
 
     it('is lowest priority — x-api-key and Bearer win over the Google credential', () => {
-      expect(authorizeApiRequest(validApiKey, undefined, 'invalid-key')).toBeUndefined()
-      expect(authorizeApiRequest(undefined, validApiKey, 'invalid-key')).toBeUndefined()
+      expect(authorizeApiRequest(validApiKey, undefined, { googleApiKey: 'invalid-key' })).toBeUndefined()
+      expect(authorizeApiRequest(undefined, validApiKey, { googleApiKey: 'invalid-key' })).toBeUndefined()
     })
   })
 

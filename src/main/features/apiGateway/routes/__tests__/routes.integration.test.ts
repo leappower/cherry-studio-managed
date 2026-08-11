@@ -102,6 +102,12 @@ import { buildApp } from '../../app'
 
 const AUTH = { 'content-type': 'application/json', 'x-api-key': 'test-key' }
 
+// F-3: the managed admin surface authenticates Bearer-only against the
+// independent `feature.api_gateway.managed_key`. The preference mock returns
+// 'test-key' for every key, so the admin Bearer token below must equal
+// 'test-key' to authenticate (distinct from the employee api_key used by AUTH).
+const AUTH_ADMIN = { 'content-type': 'application/json', authorization: 'Bearer test-key' }
+
 function post(app: ReturnType<typeof buildApp>, path: string, body: unknown, headers: Record<string, string> = AUTH) {
   return app.handle(new Request(`http://localhost${path}`, { method: 'POST', headers, body: JSON.stringify(body) }))
 }
@@ -616,14 +622,14 @@ describe('API gateway routes (integration)', () => {
       expect(mockProviderService.list).not.toHaveBeenCalled()
     })
 
-    it('rejects an admin request with an invalid key with 403', async () => {
+    it('rejects an admin request with only an x-api-key header (401, F-3 Bearer-only)', async () => {
       const { status } = await read(await get(app, '/v1/admin/providers', { 'x-api-key': 'wrong-key' }))
-      expect(status).toBe(403)
+      expect(status).toBe(401)
     })
 
     it('GET /v1/admin/providers lists providers via the service', async () => {
       mockProviderService.list.mockReturnValueOnce([{ id: 'openai', name: 'OpenAI' }])
-      const { status, body } = await read(await get(app, '/v1/admin/providers'))
+      const { status, body } = await read(await get(app, '/v1/admin/providers', AUTH_ADMIN))
       expect(status).toBe(200)
       expect(body).toEqual([{ id: 'openai', name: 'OpenAI' }])
       expect(mockProviderService.list).toHaveBeenCalledOnce()
@@ -631,7 +637,7 @@ describe('API gateway routes (integration)', () => {
 
     it('POST /v1/admin/providers creates + broadcasts collection and detail endpoints', async () => {
       const { status, body } = await read(
-        await post(app, '/v1/admin/providers', { providerId: 'openai', name: 'OpenAI' })
+        await post(app, '/v1/admin/providers', { providerId: 'openai', name: 'OpenAI' }, AUTH_ADMIN)
       )
       expect(status).toBe(200)
       expect(body.id).toBe('openai')
@@ -643,7 +649,7 @@ describe('API gateway routes (integration)', () => {
     })
 
     it('PUT /v1/admin/providers/:id updates + broadcasts collection and detail endpoints', async () => {
-      const { status } = await read(await put(app, '/v1/admin/providers/openai', { name: 'OpenAI v2' }))
+      const { status } = await read(await put(app, '/v1/admin/providers/openai', { name: 'OpenAI v2' }, AUTH_ADMIN))
       expect(status).toBe(200)
       expect(mockProviderService.update).toHaveBeenCalledWith('openai', { name: 'OpenAI v2' })
       expect(mockNotifyDataApiDataChange).toHaveBeenCalledWith([
@@ -654,9 +660,14 @@ describe('API gateway routes (integration)', () => {
 
     it('PUT /v1/admin/providers/:id/api-keys broadcasts list + detail + api-keys (S2 alignment)', async () => {
       const { status, body } = await read(
-        await put(app, '/v1/admin/providers/openai/api-keys', {
-          keys: [{ key: 'sk-123', id: 'k1', isEnabled: true }]
-        })
+        await put(
+          app,
+          '/v1/admin/providers/openai/api-keys',
+          {
+            keys: [{ key: 'sk-123', id: 'k1', isEnabled: true }]
+          },
+          AUTH_ADMIN
+        )
       )
       expect(status).toBe(200)
       expect(body.id).toBe('openai')
@@ -676,7 +687,7 @@ describe('API gateway routes (integration)', () => {
 
     it('GET /v1/admin/usage reads usage via the service', async () => {
       mockAiUsageRecordService.list.mockReturnValueOnce({ records: [{ providerId: 'openai' }], total: 1 })
-      const { status, body } = await read(await get(app, '/v1/admin/usage'))
+      const { status, body } = await read(await get(app, '/v1/admin/usage', AUTH_ADMIN))
       expect(status).toBe(200)
       expect(body.records).toHaveLength(1)
       expect(mockAiUsageRecordService.list).toHaveBeenCalledOnce()
@@ -684,7 +695,7 @@ describe('API gateway routes (integration)', () => {
 
     it('POST /v1/admin/agents creates + broadcasts collection and detail endpoints', async () => {
       const { status, body } = await read(
-        await post(app, '/v1/admin/agents', { name: 'AgentA', type: 'claude-code', model: 'openai::gpt-4' })
+        await post(app, '/v1/admin/agents', { name: 'AgentA', type: 'claude-code', model: 'openai::gpt-4' }, AUTH_ADMIN)
       )
       expect(status).toBe(200)
       expect(body.id).toBe('agent-1')
@@ -696,7 +707,7 @@ describe('API gateway routes (integration)', () => {
     })
 
     it('PUT /v1/admin/agents/:id updates + broadcasts collection and detail endpoints', async () => {
-      const { status, body } = await read(await put(app, '/v1/admin/agents/agent-1', { name: 'A2' }))
+      const { status, body } = await read(await put(app, '/v1/admin/agents/agent-1', { name: 'A2' }, AUTH_ADMIN))
       expect(status).toBe(200)
       expect(body.id).toBe('agent-1')
       expect(mockAgentService.updateAgent).toHaveBeenCalledWith('agent-1', { name: 'A2' })

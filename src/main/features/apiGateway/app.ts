@@ -8,7 +8,7 @@ import { v4 as uuidv4 } from 'uuid'
 
 import { adminRoutes } from './adminRoutes'
 import { gatewayErrorHandler } from './errors'
-import { authorizeApiRequest } from './middleware/auth'
+import { authorizeApiRequest, isAdminPath } from './middleware/auth'
 import {
   buildOpenApiDocument,
   DOC_DESCRIPTIONS,
@@ -37,8 +37,11 @@ const v1Routes = new Elysia({ prefix: '/v1' })
   .use(bearer())
   .guard({
     as: 'scoped',
-    beforeHandle: ({ bearer, headers, set }) => {
-      const failure = authorizeApiRequest(headers['x-api-key'], bearer)
+    beforeHandle: ({ bearer, headers, set, path }) => {
+      // F-3: admin surface uses the independent managed_key (Bearer only); the
+      // ordinary /v1 surface keeps using api_key. Path-driven scope selection.
+      const scope = isAdminPath(path) ? 'admin' : 'api'
+      const failure = authorizeApiRequest(headers['x-api-key'], bearer, { scope })
       if (!failure) return undefined
       set.status = failure.status
       return { error: failure.error }

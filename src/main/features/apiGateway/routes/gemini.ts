@@ -93,7 +93,7 @@ export const geminiRoutes = new Elysia({ prefix: '/v1beta' })
     as: 'local',
     beforeHandle: ({ bearer, headers, query, set }) => {
       const googleApiKey = headers['x-goog-api-key'] ?? (typeof query?.key === 'string' ? query.key : undefined)
-      const failure = authorizeApiRequest(headers['x-api-key'], bearer, googleApiKey)
+      const failure = authorizeApiRequest(headers['x-api-key'], bearer, { googleApiKey })
       if (!failure) return undefined
       // Short-circuit responses bypass the root `onError`, so shape the Google
       // envelope here directly (401 → UNAUTHENTICATED, 403 → PERMISSION_DENIED)
