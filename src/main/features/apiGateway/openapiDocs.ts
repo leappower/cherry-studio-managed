@@ -74,9 +74,16 @@ export const DOC_DESCRIPTIONS = {
   // so admin route descriptions follow the same per-language translation path.
   admin_create_agent: 'apiGateway.docs.operations.admin_create_agent',
   admin_update_agent: 'apiGateway.docs.operations.admin_update_agent',
+  admin_list_agents: 'apiGateway.docs.operations.admin_list_agents',
+  admin_get_agent: 'apiGateway.docs.operations.admin_get_agent',
+  admin_delete_agent: 'apiGateway.docs.operations.admin_delete_agent',
+  admin_reorder_agents: 'apiGateway.docs.operations.admin_reorder_agents',
   admin_list_providers: 'apiGateway.docs.operations.admin_list_providers',
   admin_create_provider: 'apiGateway.docs.operations.admin_create_provider',
   admin_update_provider: 'apiGateway.docs.operations.admin_update_provider',
+  admin_delete_provider: 'apiGateway.docs.operations.admin_delete_provider',
+  admin_batch_upsert_providers: 'apiGateway.docs.operations.admin_batch_upsert_providers',
+  admin_add_provider_api_key: 'apiGateway.docs.operations.admin_add_provider_api_key',
   admin_replace_provider_api_keys: 'apiGateway.docs.operations.admin_replace_provider_api_keys',
   admin_read_usage: 'apiGateway.docs.operations.admin_read_usage'
 } as const
@@ -104,9 +111,16 @@ function docDescriptions(lang: LanguageVarious): Record<DocDescriptionSlot, stri
     search_knowledge_bases: t('apiGateway.docs.operations.search_knowledge_bases', undefined, lang),
     admin_create_agent: t('apiGateway.docs.operations.admin_create_agent', undefined, lang),
     admin_update_agent: t('apiGateway.docs.operations.admin_update_agent', undefined, lang),
+    admin_list_agents: t('apiGateway.docs.operations.admin_list_agents', undefined, lang),
+    admin_get_agent: t('apiGateway.docs.operations.admin_get_agent', undefined, lang),
+    admin_delete_agent: t('apiGateway.docs.operations.admin_delete_agent', undefined, lang),
+    admin_reorder_agents: t('apiGateway.docs.operations.admin_reorder_agents', undefined, lang),
     admin_list_providers: t('apiGateway.docs.operations.admin_list_providers', undefined, lang),
     admin_create_provider: t('apiGateway.docs.operations.admin_create_provider', undefined, lang),
     admin_update_provider: t('apiGateway.docs.operations.admin_update_provider', undefined, lang),
+    admin_delete_provider: t('apiGateway.docs.operations.admin_delete_provider', undefined, lang),
+    admin_batch_upsert_providers: t('apiGateway.docs.operations.admin_batch_upsert_providers', undefined, lang),
+    admin_add_provider_api_key: t('apiGateway.docs.operations.admin_add_provider_api_key', undefined, lang),
     admin_replace_provider_api_keys: t('apiGateway.docs.operations.admin_replace_provider_api_keys', undefined, lang),
     admin_read_usage: t('apiGateway.docs.operations.admin_read_usage', undefined, lang)
   }

@@ -35,7 +35,17 @@
         "list_models": "以 OpenAI models 格式列出该网关可用的模型。",
         "messages": "创建一条消息。请求与响应格式与 Anthropic Messages 一致；设置 `stream: true` 可流式输出。",
         "responses": "创建一次响应。请求与响应格式与 OpenAI Responses 一致。",
-        "search_knowledge_bases": "在一个或多个知识库中检索，返回匹配的文档片段。"
+        "search_knowledge_bases": "在一个或多个知识库中检索，返回匹配的文档片段。",
+        "admin_list_agents": "列出智能体（受管管理员路由，F-4）。只读。需要 `Authorization: Bearer <managed_key>`（独立受管管理密钥）。",
+        "admin_get_agent": "按 id 获取单个智能体（受管管理员路由，F-4）。只读。智能体不存在时返回 404。需要 `Authorization: Bearer <managed_key>`（独立受管管理密钥）。",
+        "admin_delete_agent": "删除智能体（受管管理员路由，F-4）。广播变更以触发渲染 useDataChange 订阅刷新。智能体不存在时返回 404。需要 `Authorization: Bearer <managed_key>`（独立受管管理密钥）。",
+        "admin_reorder_agents": "批量重排智能体（受管管理员路由，F-4）。Body 遵循官方 OrderBatchRequest。持久化 orderKey 并广播 `/agents` 投影。需要 `Authorization: Bearer <managed_key>`（独立受管管理密钥）。",
+        "admin_delete_provider": "删除 provider（受管管理员路由，F-5）。广播变更以触发渲染 useDataChange 订阅刷新。不存在时抛 notFound(404)；受管 provider 抛 invalidOperation。需要 `Authorization: Bearer <managed_key>`（独立受管管理密钥）。",
+        "admin_batch_upsert_providers": "批量创建或更新 provider（受管管理员路由，F-5）。Body 为官方 CreateProviderDto 数组。广播 `/providers` 投影。需要 `Authorization: Bearer <managed_key>`（独立受管管理密钥）。",
+        "admin_add_provider_api_key": "为 provider 追加单个 API key（受管管理员路由，F-5）。Body：`{ \"key\": string, \"label\"?: string }`。广播 list + detail + api-keys 三个数据面。需要 `Authorization: Bearer <managed_key>`（独立受管管理密钥）。",
+        "admin_list_skills": "列出已安装的全局技能（受管管理员路由，F-6）。只读。需要 `Authorization: Bearer <managed_key>`（独立受管管理密钥）。",
+        "admin_list_mcp_servers": "列出 MCP 服务器（受管管理员路由，F-6）。只读。需要 `Authorization: Bearer <managed_key>`（独立受管管理密钥）。",
+        "admin_list_agent_files": "列出 agent 工作区 / 工作目录集合（受管管理员路由，F-7b）。只读。需要 `Authorization: Bearer <managed_key>`（独立受管管理密钥）。"
       },
       "tags": {
         "anthropic": "兼容 Anthropic 的接口。把 Anthropic SDK 的 base URL 指向本网关即可使用。",

@@ -74,28 +74,50 @@ const {
   mockProviderService,
   mockAgentService,
   mockAiUsageRecordService,
-  mockCreateAgent
+  mockCreateAgent,
+  mockMcpServerService,
+  mockAgentGlobalSkillService,
+  mockAgentWorkspaceService
 } = vi.hoisted(() => ({
   mockNotifyDataApiDataChange: vi.fn(),
   mockProviderService: {
     list: vi.fn<any>(() => []),
     create: vi.fn<any>((dto: any) => ({ id: dto.providerId, name: dto.name })),
     update: vi.fn<any>((id: string, _dto: any) => ({ id, name: 'updated' })),
-    replaceApiKeys: vi.fn<any>((id: string) => ({ id, name: 'updated' }))
+    replaceApiKeys: vi.fn<any>((id: string) => ({ id, name: 'updated' })),
+    delete: vi.fn<any>(() => undefined),
+    batchUpsert: vi.fn<any>(() => undefined),
+    addApiKey: vi.fn<any>((id: string) => ({ id, name: 'updated' }))
   },
   mockAgentService: {
-    updateAgent: vi.fn<any>((id: string, _u: any) => ({ id, name: 'updated', instructions: 'i' }))
+    updateAgent: vi.fn<any>((id: string, _u: any) => ({ id, name: 'updated', instructions: 'i' })),
+    listAgents: vi.fn<any>(() => ({ agents: [], total: 0 })),
+    getAgent: vi.fn<any>((id: string) => ({ id, name: 'agent', instructions: 'i' })),
+    deleteAgent: vi.fn<any>((_id: string) => ({ deleted: true, deletedSessionIds: [] })),
+    reorderBatch: vi.fn<any>(() => undefined)
   },
   mockAiUsageRecordService: {
     list: vi.fn<any>(() => ({ records: [], total: 0 }))
   },
-  mockCreateAgent: vi.fn<any>(async () => ({ id: 'agent-1', name: 'A', type: 'claude-code', model: 'openai:gpt-4' }))
+  mockCreateAgent: vi.fn<any>(async () => ({ id: 'agent-1', name: 'A', type: 'claude-code', model: 'openai:gpt-4' })),
+  mockMcpServerService: {
+    list: vi.fn<any>(() => ({ items: [], total: 0, page: 1 }))
+  },
+  mockAgentGlobalSkillService: {
+    list: vi.fn<any>(() => [])
+  },
+  mockAgentWorkspaceService: {
+    list: vi.fn<any>(() => [])
+  }
 }))
 
 vi.mock('@data/dataApiDataChange', () => ({ notifyDataApiDataChange: mockNotifyDataApiDataChange }))
 vi.mock('@data/services/ProviderService', () => ({ providerService: mockProviderService }))
 vi.mock('@data/services/AgentService', () => ({ agentService: mockAgentService }))
 vi.mock('@data/services/AiUsageRecordService', () => ({ aiUsageRecordService: mockAiUsageRecordService }))
+vi.mock('@data/services/McpServerService', () => ({ mcpServerService: mockMcpServerService }))
+vi.mock('@data/services/AgentGlobalSkillService', () => ({ agentGlobalSkillService: mockAgentGlobalSkillService }))
+vi.mock('@data/services/AgentWorkspaceService', () => ({ agentWorkspaceService: mockAgentWorkspaceService }))
 vi.mock('@main/ai/agents/createAgent', () => ({ createAgent: mockCreateAgent }))
 
 import { buildApp } from '../../app'
@@ -116,6 +138,9 @@ function get(app: ReturnType<typeof buildApp>, path: string, headers: Record<str
 }
 function put(app: ReturnType<typeof buildApp>, path: string, body: unknown, headers: Record<string, string> = AUTH) {
   return app.handle(new Request(`http://localhost${path}`, { method: 'PUT', headers, body: JSON.stringify(body) }))
+}
+function del(app: ReturnType<typeof buildApp>, path: string, headers: Record<string, string> = AUTH) {
+  return app.handle(new Request(`http://localhost${path}`, { method: 'DELETE', headers }))
 }
 async function read(res: Response): Promise<{ status: number; body: any }> {
   return { status: res.status, body: await res.json() }
@@ -609,6 +634,8 @@ describe('API gateway routes (integration)', () => {
         '/v1/admin/providers/{id}/api-keys',
         '/v1/admin/agents',
         '/v1/admin/agents/{id}',
+        '/v1/admin/agents/reorder',
+        '/v1/admin/providers/batchUpsert',
         '/v1/admin/usage'
       ]) {
         expect(body.paths[path]).toBeDefined()
@@ -714,6 +741,97 @@ describe('API gateway routes (integration)', () => {
       expect(mockNotifyDataApiDataChange).toHaveBeenCalledWith([
         { endpoint: '/agents', kind: 'projection', entityIds: ['agent-1'] },
         { endpoint: '/agents/:agentId', entityIds: ['agent-1'] }
+      ])
+    })
+
+    it('GET /v1/admin/agents lists agents via the service (F-4)', async () => {
+      mockAgentService.listAgents.mockReturnValueOnce({ agents: [{ id: 'a1', name: 'A' }], total: 1 })
+      const { status, body } = await read(await get(app, '/v1/admin/agents', AUTH_ADMIN))
+      expect(status).toBe(200)
+      expect(body.agents).toHaveLength(1)
+      expect(mockAgentService.listAgents).toHaveBeenCalledOnce()
+    })
+
+    it('GET /v1/admin/agents/:id returns the agent via the service (F-4)', async () => {
+      mockAgentService.getAgent.mockReturnValueOnce({ id: 'a1', name: 'A', instructions: 'i' })
+      const { status, body } = await read(await get(app, '/v1/admin/agents/a1', AUTH_ADMIN))
+      expect(status).toBe(200)
+      expect(body.id).toBe('a1')
+      expect(mockAgentService.getAgent).toHaveBeenCalledWith('a1')
+    })
+
+    it('GET /v1/admin/agents/:id returns 404 when the agent is absent (F-4)', async () => {
+      mockAgentService.getAgent.mockReturnValueOnce(null)
+      const { status } = await read(await get(app, '/v1/admin/agents/nope', AUTH_ADMIN))
+      expect(status).toBe(404)
+    })
+
+    it('DELETE /v1/admin/agents/:id deletes + broadcasts collection and detail (F-4)', async () => {
+      const { status, body } = await read(await del(app, '/v1/admin/agents/a1', AUTH_ADMIN))
+      expect(status).toBe(200)
+      expect(body.deleted).toBe(true)
+      expect(mockAgentService.deleteAgent).toHaveBeenCalledWith('a1')
+      expect(mockNotifyDataApiDataChange).toHaveBeenCalledWith([
+        { endpoint: '/agents', kind: 'projection', entityIds: ['a1'] },
+        { endpoint: '/agents/:agentId', entityIds: ['a1'] }
+      ])
+    })
+
+    it('DELETE /v1/admin/agents/:id returns 404 when the agent is absent (F-4)', async () => {
+      mockAgentService.deleteAgent.mockReturnValueOnce({ deleted: false })
+      const { status } = await read(await del(app, '/v1/admin/agents/nope', AUTH_ADMIN))
+      expect(status).toBe(404)
+    })
+
+    it('POST /v1/admin/agents/reorder persists order + broadcasts the collection (F-4)', async () => {
+      const { status } = await read(
+        await post(
+          app,
+          '/v1/admin/agents/reorder',
+          { moves: [{ id: 'a1', anchor: { position: 'first' } }] },
+          AUTH_ADMIN
+        )
+      )
+      expect(status).toBe(200)
+      expect(mockAgentService.reorderBatch).toHaveBeenCalledWith([{ id: 'a1', anchor: { position: 'first' } }])
+      expect(mockNotifyDataApiDataChange).toHaveBeenCalledWith([
+        { endpoint: '/agents', kind: 'projection', entityIds: ['a1'] }
+      ])
+    })
+
+    it('DELETE /v1/admin/providers/:id deletes + broadcasts collection and detail (F-5)', async () => {
+      const { status, body } = await read(await del(app, '/v1/admin/providers/custom', AUTH_ADMIN))
+      expect(status).toBe(200)
+      expect(body.deleted).toBe(true)
+      expect(mockProviderService.delete).toHaveBeenCalledWith('custom')
+      expect(mockNotifyDataApiDataChange).toHaveBeenCalledWith([
+        { endpoint: '/providers', kind: 'projection', entityIds: ['custom'] },
+        { endpoint: '/providers/:providerId', entityIds: ['custom'] }
+      ])
+    })
+
+    it('POST /v1/admin/providers/batchUpsert upserts + broadcasts the collection (F-5)', async () => {
+      const { status } = await read(
+        await post(app, '/v1/admin/providers/batchUpsert', [{ providerId: 'p1', name: 'P1' }], AUTH_ADMIN)
+      )
+      expect(status).toBe(200)
+      expect(mockProviderService.batchUpsert).toHaveBeenCalledWith([{ providerId: 'p1', name: 'P1' }])
+      expect(mockNotifyDataApiDataChange).toHaveBeenCalledWith([
+        { endpoint: '/providers', kind: 'projection', entityIds: [] }
+      ])
+    })
+
+    it('POST /v1/admin/providers/:id/api-keys adds a key + broadcasts list/detail/api-keys (F-5)', async () => {
+      const { status, body } = await read(
+        await post(app, '/v1/admin/providers/openai/api-keys', { key: 'sk-456', label: 'ops' }, AUTH_ADMIN)
+      )
+      expect(status).toBe(200)
+      expect(body.id).toBe('openai')
+      expect(mockProviderService.addApiKey).toHaveBeenCalledWith('openai', 'sk-456', 'ops')
+      expect(mockNotifyDataApiDataChange).toHaveBeenCalledWith([
+        { endpoint: '/providers', kind: 'projection', entityIds: ['openai'] },
+        { endpoint: '/providers/:providerId', entityIds: ['openai'] },
+        { endpoint: '/providers/:providerId/api-keys', entityIds: ['openai'] }
       ])
     })
   })

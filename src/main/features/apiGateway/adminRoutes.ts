@@ -1,8 +1,11 @@
+import { application } from '@application'
 import { notifyDataApiDataChange } from '@data/dataApiDataChange'
 import { agentService } from '@data/services/AgentService'
 import { aiUsageRecordService } from '@data/services/AiUsageRecordService'
 import { providerService } from '@data/services/ProviderService'
+import { removeAgentDataDirectory } from '@main/ai/agents/agentDataDirectory'
 import { createAgent } from '@main/ai/agents/createAgent'
+import { OrderBatchRequestSchema } from '@shared/data/api/schemas/_endpointHelpers'
 import { AiUsageRecordListQuerySchema } from '@shared/data/api/schemas/aiUsageRecords'
 import {
   CreateProviderSchema,
@@ -125,6 +128,113 @@ adminRoutes.post(
       tags: [DOC_TAGS.cherry],
       summary: 'Admin: create agent',
       description: DOC_DESCRIPTIONS.admin_create_agent
+    }
+  }
+)
+
+// ---------------------------------------------------------------------------
+// F-4 — agents list / get / delete / reorder (managed admin CRUD completion).
+// ---------------------------------------------------------------------------
+
+/** List agents (F-4). Read-only — no broadcast needed. */
+adminRoutes.get(
+  '/agents',
+  async () => {
+    return agentService.listAgents()
+  },
+  {
+    detail: {
+      tags: [DOC_TAGS.cherry],
+      summary: 'Admin: list agents',
+      description: DOC_DESCRIPTIONS.admin_list_agents
+    }
+  }
+)
+
+/** Get a single agent by id (F-4). Read-only — no broadcast needed. */
+adminRoutes.get(
+  '/agents/:id',
+  async ({ params, set }) => {
+    const agent = agentService.getAgent(params.id)
+    if (!agent) {
+      set.status = 404
+      return { error: `Not Found: Agent ${params.id}` }
+    }
+    return agent
+  },
+  {
+    params: z.object({ id: z.string().min(1) }),
+    detail: {
+      tags: [DOC_TAGS.cherry],
+      summary: 'Admin: get agent',
+      description: DOC_DESCRIPTIONS.admin_get_agent
+    }
+  }
+)
+
+/**
+ * Delete an agent (F-4). Orchestrates the official delete (AgentService
+ * removes the row, cascades junctions, purges pins) plus the filesystem data
+ * directory removal — mirroring createAgent's provisioning side effect so a
+ * managed delete fully releases the agent's per-agent data root.
+ */
+adminRoutes.delete(
+  '/agents/:id',
+  async ({ params, set }) => {
+    const result = agentService.deleteAgent(params.id)
+    if (!result.deleted) {
+      set.status = 404
+      return { error: `Not Found: Agent ${params.id}` }
+    }
+
+    // Commit done — release the on-disk data directory (best-effort, matching
+    // createAgent's rollback behaviour).
+    const agentsDataRoot = application.getPath('feature.agents.data')
+    await removeAgentDataDirectory(agentsDataRoot, params.id).catch(() => undefined)
+
+    // Broadcast the collection projection plus the entity detail endpoint so
+    // list AND detail subscribers converge (M0-收尾 S2 convention).
+    notifyDataApiDataChange([
+      { endpoint: '/agents', kind: 'projection', entityIds: [params.id] },
+      { endpoint: '/agents/:agentId', entityIds: [params.id] }
+    ])
+
+    return result
+  },
+  {
+    params: z.object({ id: z.string().min(1) }),
+    detail: {
+      tags: [DOC_TAGS.cherry],
+      summary: 'Admin: delete agent',
+      description: DOC_DESCRIPTIONS.admin_delete_agent
+    }
+  }
+)
+
+/**
+ * Batch reorder agents (F-4). Body follows the official OrderBatchRequest
+ * ({ moves: [{ id, anchor }] }). Persists orderKey through AgentService and
+ * broadcasts the collection projection so the ordered list converges.
+ */
+adminRoutes.post(
+  '/agents/reorder',
+  async ({ body, set }) => {
+    const parsed = OrderBatchRequestSchema.safeParse(body)
+    if (!parsed.success) {
+      set.status = 400
+      return { error: 'Bad Request: ' + parsed.error.issues.map((i) => i.message).join('; ') }
+    }
+    agentService.reorderBatch(parsed.data.moves)
+    notifyDataApiDataChange([
+      { endpoint: '/agents', kind: 'projection', entityIds: parsed.data.moves.map((m) => m.id) }
+    ])
+    return { ok: true }
+  },
+  {
+    detail: {
+      tags: [DOC_TAGS.cherry],
+      summary: 'Admin: reorder agents',
+      description: DOC_DESCRIPTIONS.admin_reorder_agents
     }
   }
 )

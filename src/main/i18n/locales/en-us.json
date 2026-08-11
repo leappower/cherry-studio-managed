@@ -35,7 +35,17 @@
         "list_models": "List the models available through this gateway, in the OpenAI models format.",
         "messages": "Create a message. Request and response bodies follow the Anthropic Messages format; set `stream: true` for incremental output.",
         "responses": "Create a response. Request and response bodies follow the OpenAI Responses format.",
-        "search_knowledge_bases": "Search one or more knowledge bases and return the matching document chunks."
+        "search_knowledge_bases": "Search one or more knowledge bases and return the matching document chunks.",
+        "admin_list_agents": "List agents (managed admin route, F-4). Read-only. Requires `Authorization: Bearer <managed_key>` (the independent managed admin key).",
+        "admin_get_agent": "Get a single agent by id (managed admin route, F-4). Read-only. Returns 404 when the agent does not exist. Requires `Authorization: Bearer <managed_key>` (the independent managed admin key).",
+        "admin_delete_agent": "Delete an agent (managed admin route, F-4). Broadcasts the change so renderer useDataChange subscriptions refetch. Returns 404 when the agent does not exist. Requires `Authorization: Bearer <managed_key>` (the independent managed admin key).",
+        "admin_reorder_agents": "Batch reorder agents (managed admin route, F-4). Body follows the official OrderBatchRequest. Persists orderKey and broadcasts the `/agents` projection. Requires `Authorization: Bearer <managed_key>` (the independent managed admin key).",
+        "admin_delete_provider": "Delete a provider (managed admin route, F-5). Broadcasts the change so renderer useDataChange subscriptions refetch. Throws notFound (404) when absent; throws invalidOperation for managed providers. Requires `Authorization: Bearer <managed_key>` (the independent managed admin key).",
+        "admin_batch_upsert_providers": "Batch create or update providers (managed admin route, F-5). Body is an array of official CreateProviderDto. Broadcasts the `/providers` projection. Requires `Authorization: Bearer <managed_key>` (the independent managed admin key).",
+        "admin_add_provider_api_key": "Append a single API key to a provider (managed admin route, F-5). Body: `{ \"key\": string, \"label\"?: string }`. Broadcasts list + detail + api-keys surfaces. Requires `Authorization: Bearer <managed_key>` (the independent managed admin key).",
+        "admin_list_skills": "List installed global skills (managed admin route, F-6). Read-only. Requires `Authorization: Bearer <managed_key>` (the independent managed admin key).",
+        "admin_list_mcp_servers": "List MCP servers (managed admin route, F-6). Read-only. Requires `Authorization: Bearer <managed_key>` (the independent managed admin key).",
+        "admin_list_agent_files": "List agent workspaces / working-directory collection (managed admin route, F-7b). Read-only. Requires `Authorization: Bearer <managed_key>` (the independent managed admin key)."
       },
       "tags": {
         "anthropic": "Anthropic-compatible endpoints. Point an Anthropic SDK at this gateway's base URL to use them.",
