@@ -1,6 +1,7 @@
 import { InputGroup, InputGroupAddon, InputGroupInput, Tooltip } from '@cherrystudio/ui'
 import { useProvider } from '@renderer/hooks/useProvider'
 import type { ApiKeyConnectivity } from '@renderer/pages/settings/ProviderSettings/types/healthCheck'
+import { isManagedEntity } from '@renderer/utils/managedEntity'
 import { Activity, Eye, EyeOff, KeyRound, Loader2 } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -57,6 +58,10 @@ export default function ApiKey({
     return null
   }
 
+  // Managed providers (F-10) expose a read-only key field: editing the key is
+  // immutable. Only the input is disabled; the key list / check stay available.
+  const managed = isManagedEntity(provider)
+
   return (
     <>
       <ProviderSection id={provider.id === 'cherryin' ? 'cherryin-api-key-section' : undefined}>
@@ -89,7 +94,7 @@ export default function ApiKey({
                   setInputApiKey(event.target.value)
                 }}
                 onBlur={() => void handleApiKeyBlur()}
-                disabled={provider.id === 'copilot'}
+                disabled={managed || provider.id === 'copilot'}
               />
               {provider.id !== 'copilot' && (
                 <InputGroupAddon align="inline-end" className="-mr-0.5 pr-0">
