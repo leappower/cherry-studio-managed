@@ -14,6 +14,7 @@ import { type StoredEndpointConfigOverride, userProviderTable } from '@data/db/s
 import { type SqliteErrorHandlers, withSqliteErrors } from '@data/db/sqliteErrors'
 import type { DbType } from '@data/db/types'
 import { getDataService, registerDataService } from '@data/services/dataServiceRegistry'
+import { managedRegistryService } from '@data/services/ManagedRegistryService'
 import { pinService } from '@data/services/PinService'
 import { buildApiFeaturesBaseline, diffApiFeatures } from '@data/services/ProviderRegistryService'
 import { applyMoves, insertManyWithOrderKey, insertWithOrderKey } from '@data/services/utils/orderKey'
@@ -27,7 +28,6 @@ import { loggerService } from '@logger'
 import { DataApiError, DataApiErrorFactory, ErrorCode } from '@shared/data/api/errors'
 import type { OrderBatchRequest, OrderRequest } from '@shared/data/api/schemas/_endpointHelpers'
 import type { CreateProviderDto, ListProvidersQuery, UpdateProviderDto } from '@shared/data/api/schemas/providers'
-import { isManagedCherryAiProviderId } from '@shared/data/presets/cherryai'
 import type { EndpointType } from '@shared/data/types/model'
 import type {
   ApiKeyEntry,
@@ -88,7 +88,7 @@ function maskApiKeyForSnapshot(key: string): string {
 }
 
 function assertManagedCherryAiProviderPatchAllowed(providerId: string, dto: UpdateProviderDto): void {
-  if (!isManagedCherryAiProviderId(providerId) || Object.keys(dto).length === 0) {
+  if (!managedRegistryService.isManaged('provider', providerId) || Object.keys(dto).length === 0) {
     return
   }
 
@@ -96,11 +96,11 @@ function assertManagedCherryAiProviderPatchAllowed(providerId: string, dto: Upda
 }
 
 function assertManagedCherryAiProviderMutationAllowed(providerId: string, operation: string): void {
-  if (!isManagedCherryAiProviderId(providerId)) {
+  if (!managedRegistryService.isManaged('provider', providerId)) {
     return
   }
 
-  throw DataApiErrorFactory.invalidOperation(operation, 'managed CherryAI provider cannot be modified')
+  throw DataApiErrorFactory.invalidOperation(operation, 'managed provider cannot be modified')
 }
 
 function normalizeApiKeyEntry(entry: ApiKeyEntry): ApiKeyEntry {
