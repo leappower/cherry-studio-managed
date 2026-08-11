@@ -76,6 +76,7 @@ vi.mock('electron-updater', () => ({
     checkForUpdates: vi.fn(),
     downloadUpdate: vi.fn(),
     quitAndInstall: vi.fn(),
+    setFeedURL: vi.fn(),
     channel: '',
     allowDowngrade: false,
     disableDifferentialDownload: false,
@@ -107,6 +108,8 @@ describe('AppUpdaterService', () => {
     vi.mocked(app.getVersion).mockReturnValue('1.0.0')
     vi.mocked(regionService.getCountry).mockResolvedValue('US')
     vi.mocked(autoUpdater.checkForUpdates).mockResolvedValue(null)
+    vi.mocked(autoUpdater.setFeedURL).mockClear()
+    delete process.env.CHERRY_MANAGED_BUILD
     autoUpdater.requestHeaders = {}
     autoUpdater.channel = ''
     autoUpdater.allowDowngrade = false
@@ -186,6 +189,65 @@ describe('AppUpdaterService', () => {
         })
         return null
       })
+
+      await appUpdater.checkForUpdates()
+
+      expect(autoUpdater.checkForUpdates).toHaveBeenCalledOnce()
+    })
+  })
+
+  describe('fork-F11 managed update feed', () => {
+    it('applies a configured feed_url via setFeedURL (AC ①)', async () => {
+      MockMainPreferenceServiceUtils.setPreferenceValue(
+        'app.dist.auto_update.feed_url',
+        'https://updates.internal.example.com'
+      )
+
+      await (appUpdater as any).configureUpdaterForCheck()
+
+      expect(autoUpdater.setFeedURL).toHaveBeenCalledWith({
+        provider: 'generic',
+        url: 'https://updates.internal.example.com'
+      })
+    })
+
+    it('does not setFeedURL when feed_url is null', async () => {
+      MockMainPreferenceServiceUtils.setPreferenceValue('app.dist.auto_update.feed_url', null)
+
+      await (appUpdater as any).configureUpdaterForCheck()
+
+      expect(autoUpdater.setFeedURL).not.toHaveBeenCalled()
+    })
+
+    it('managed build without feed_url skips the official update check (AC ③)', async () => {
+      process.env.CHERRY_MANAGED_BUILD = '1'
+      MockMainPreferenceServiceUtils.setPreferenceValue('app.dist.auto_update.feed_url', null)
+
+      const result = await appUpdater.checkForUpdates()
+
+      expect(autoUpdater.checkForUpdates).not.toHaveBeenCalled()
+      expect(result).toEqual({ currentVersion: '1.0.0', updateInfo: null })
+    })
+
+    it('managed build with feed_url performs the check against the configured feed', async () => {
+      process.env.CHERRY_MANAGED_BUILD = '1'
+      MockMainPreferenceServiceUtils.setPreferenceValue(
+        'app.dist.auto_update.feed_url',
+        'https://updates.internal.example.com'
+      )
+
+      await appUpdater.checkForUpdates()
+
+      expect(autoUpdater.setFeedURL).toHaveBeenCalledWith({
+        provider: 'generic',
+        url: 'https://updates.internal.example.com'
+      })
+      expect(autoUpdater.checkForUpdates).toHaveBeenCalledOnce()
+    })
+
+    it('non-managed build without feed_url still checks the official feed (unchanged)', async () => {
+      MockMainPreferenceServiceUtils.setPreferenceValue('app.dist.auto_update.feed_url', null)
+      delete process.env.CHERRY_MANAGED_BUILD
 
       await appUpdater.checkForUpdates()
 

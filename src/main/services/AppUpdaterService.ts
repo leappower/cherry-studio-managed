@@ -153,9 +153,34 @@ export class AppUpdaterService extends BaseService {
     this.registerDisposable(() => autoUpdater.removeListener('update-downloaded', onUpdateDownloaded))
   }
 
+  // fork-F11: managed build (受管构建) detection. Signalled via the
+  // CHERRY_MANAGED_BUILD env var, which is set only in the managed deployment —
+  // never in the official build — so official autoUpdate behaviour is untouched.
+  private isManagedBuild(): boolean {
+    const flag = process.env.CHERRY_MANAGED_BUILD
+    return flag === '1' || flag === 'true' || flag === 'TRUE'
+  }
+
+  // fork-F11: configured update feed override (null = use default / managed-disable).
+  private updateFeedUrl(): string | null {
+    return application.get('PreferenceService').get('app.dist.auto_update.feed_url')
+  }
+
   private async configureUpdaterForCheck() {
     const currentVersion = app.getVersion()
     const testPlan = application.get('PreferenceService').get('app.dist.test_plan.enabled')
+
+    // fork-F11: a configured feed_url takes over the update feed (AC ①). When
+    // feed_url is null and this is a managed build, we must never contact the
+    // default (official releases.cherry-ai.com) feed — the guard in
+    // performUpdateCheck() skips the check entirely (AC ③).
+    const feedUrl = this.updateFeedUrl()
+    if (feedUrl) {
+      autoUpdater.setFeedURL({ provider: 'generic', url: feedUrl })
+      logger.info(`Using configured managed update feed_url: ${feedUrl}`)
+    } else if (this.isManagedBuild()) {
+      logger.info('Managed build: no update feed_url configured, update checks disabled')
+    }
     const requestedChannel = testPlan
       ? application.get('PreferenceService').get('app.dist.test_plan.channel') || UpgradeChannel.RC
       : UpgradeChannel.LATEST
@@ -211,6 +236,18 @@ export class AppUpdaterService extends BaseService {
     }
 
     await this.configureUpdaterForCheck()
+
+    // fork-F11 AC ③: a managed build with no feed_url configured must NOT issue
+    // an update check against the default (official releases.cherry-ai.com)
+    // feed. Short-circuit so no network request is ever made, regardless of the
+    // auto_update.enabled preference (managed P0: official updates disabled).
+    if (this.isManagedBuild() && !this.updateFeedUrl()) {
+      logger.info('Managed build without feed_url: skipping official update check')
+      return {
+        currentVersion: app.getVersion(),
+        updateInfo: null
+      }
+    }
 
     this.updateCheckResult = await autoUpdater.checkForUpdates()
     logger.info(
