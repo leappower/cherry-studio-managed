@@ -8,6 +8,7 @@ import { createAgent } from '@main/ai/agents/createAgent'
 import { OrderBatchRequestSchema } from '@shared/data/api/schemas/_endpointHelpers'
 import { AiUsageRecordListQuerySchema } from '@shared/data/api/schemas/aiUsageRecords'
 import {
+  AddProviderApiKeySchema,
   CreateProviderSchema,
   ListProvidersQuerySchema,
   ReplaceProviderApiKeysSchema,
@@ -313,6 +314,105 @@ adminRoutes.put(
       tags: [DOC_TAGS.cherry],
       summary: 'Admin: update provider',
       description: DOC_DESCRIPTIONS.admin_update_provider
+    }
+  }
+)
+
+// ---------------------------------------------------------------------------
+// F-5 — provider delete / batchUpsert / addApiKey (managed admin CRUD
+// completion). Each write broadcasts per the codebase-wide template-path +
+// entityIds convention so renderer useDataChange subscriptions converge.
+// ---------------------------------------------------------------------------
+
+/**
+ * Delete a provider (F-5). Mirrors the data-api DELETE: providerService.delete
+ * throws notFound (404) when absent and invalidOperation for managed / preset
+ * providers. Broadcasts the collection plus the entity detail endpoint.
+ */
+adminRoutes.delete(
+  '/providers/:id',
+  async ({ params, set }) => {
+    try {
+      providerService.delete(params.id)
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('Cannot delete preset provider')) {
+        set.status = 403
+        return { error: `Forbidden: ${error.message}` }
+      }
+      set.status = 404
+      return { error: `Not Found: Provider ${params.id}` }
+    }
+    // Commit done — broadcast the collection plus the entity detail endpoint.
+    notifyDataApiDataChange([
+      { endpoint: '/providers', kind: 'projection', entityIds: [params.id] },
+      { endpoint: '/providers/:providerId', entityIds: [params.id] }
+    ])
+    return { deleted: true, providerId: params.id }
+  },
+  {
+    params: z.object({ id: z.string().min(1) }),
+    detail: {
+      tags: [DOC_TAGS.cherry],
+      summary: 'Admin: delete provider',
+      description: DOC_DESCRIPTIONS.admin_delete_provider
+    }
+  }
+)
+
+/**
+ * Batch upsert providers (F-5). Body is an array of the official
+ * CreateProviderDto. Insert-only (existing ids are filtered by the service).
+ * Broadcasts the `/providers` collection projection.
+ */
+adminRoutes.post(
+  '/providers/batchUpsert',
+  async ({ body, set }) => {
+    const parsed = z.array(CreateProviderSchema).safeParse(body)
+    if (!parsed.success) {
+      set.status = 400
+      return { error: 'Bad Request: ' + parsed.error.issues.map((i) => i.message).join('; ') }
+    }
+    providerService.batchUpsert(parsed.data)
+    notifyDataApiDataChange([{ endpoint: '/providers', kind: 'projection', entityIds: [] }])
+    return { ok: true, count: parsed.data.length }
+  },
+  {
+    detail: {
+      tags: [DOC_TAGS.cherry],
+      summary: 'Admin: batch upsert providers',
+      description: DOC_DESCRIPTIONS.admin_batch_upsert_providers
+    }
+  }
+)
+
+/**
+ * Append a single API key to a provider (F-5). Body follows the official
+ * AddProviderApiKeySchema ({ key, label? }). Mirrors the replace-api-keys
+ * broadcast: the apiKeys field backs the list, detail, and api-keys read
+ * models, so all three template endpoints are notified.
+ */
+adminRoutes.post(
+  '/providers/:id/api-keys',
+  async ({ params, body, set }) => {
+    const parsed = AddProviderApiKeySchema.safeParse(body)
+    if (!parsed.success) {
+      set.status = 400
+      return { error: 'Bad Request: ' + parsed.error.issues.map((i) => i.message).join('; ') }
+    }
+    const updated = providerService.addApiKey(params.id, parsed.data.key, parsed.data.label)
+    notifyDataApiDataChange([
+      { endpoint: '/providers', kind: 'projection', entityIds: [params.id] },
+      { endpoint: '/providers/:providerId', entityIds: [params.id] },
+      { endpoint: '/providers/:providerId/api-keys', entityIds: [params.id] }
+    ])
+    return updated
+  },
+  {
+    params: z.object({ id: z.string().min(1) }),
+    detail: {
+      tags: [DOC_TAGS.cherry],
+      summary: 'Admin: add provider API key',
+      description: DOC_DESCRIPTIONS.admin_add_provider_api_key
     }
   }
 )
