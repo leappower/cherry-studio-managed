@@ -1,12 +1,15 @@
 import { application } from '@application'
 import { notifyDataApiDataChange } from '@data/dataApiDataChange'
+import { agentGlobalSkillService } from '@data/services/AgentGlobalSkillService'
 import { agentService } from '@data/services/AgentService'
 import { aiUsageRecordService } from '@data/services/AiUsageRecordService'
+import { mcpServerService } from '@data/services/McpServerService'
 import { providerService } from '@data/services/ProviderService'
 import { removeAgentDataDirectory } from '@main/ai/agents/agentDataDirectory'
 import { createAgent } from '@main/ai/agents/createAgent'
 import { OrderBatchRequestSchema } from '@shared/data/api/schemas/_endpointHelpers'
 import { AiUsageRecordListQuerySchema } from '@shared/data/api/schemas/aiUsageRecords'
+import { ListMcpServersQuerySchema } from '@shared/data/api/schemas/mcpServers'
 import {
   AddProviderApiKeySchema,
   CreateProviderSchema,
@@ -14,6 +17,7 @@ import {
   ReplaceProviderApiKeysSchema,
   UpdateProviderSchema
 } from '@shared/data/api/schemas/providers'
+import { ListSkillsQuerySchema } from '@shared/data/api/schemas/skills'
 import { CreateAgentCommandSchema } from '@shared/ipc/schemas/ai'
 import { Elysia } from 'elysia'
 import * as z from 'zod'
@@ -454,6 +458,74 @@ adminRoutes.put(
       tags: [DOC_TAGS.cherry],
       summary: 'Admin: replace provider API keys',
       description: DOC_DESCRIPTIONS.admin_replace_provider_api_keys
+    }
+  }
+)
+
+// ---------------------------------------------------------------------------
+// F-6 — skills / MCP server management routes (managed admin, read-only).
+// The underlying tables (agentGlobalSkillTable / mcpServerTable) already have
+// official data Services (AgentGlobalSkillService / McpServerService), so these
+// routes go through them — never direct sqlite (D20). Read-only: no broadcast.
+// ---------------------------------------------------------------------------
+
+/** List installed global skills (F-6). Read-only — no broadcast needed. */
+adminRoutes.get(
+  '/skills',
+  async ({ query, set }) => {
+    const parsed = ListSkillsQuerySchema.safeParse(query ?? {})
+    if (!parsed.success) {
+      set.status = 400
+      return { error: 'Bad Request: ' + parsed.error.issues.map((i) => i.message).join('; ') }
+    }
+    return agentGlobalSkillService.list(parsed.data)
+  },
+  {
+    detail: {
+      tags: [DOC_TAGS.cherry],
+      summary: 'Admin: list skills',
+      description: DOC_DESCRIPTIONS.admin_list_skills
+    }
+  }
+)
+
+/** List MCP servers (F-6). Read-only — no broadcast needed. */
+adminRoutes.get(
+  '/mcp',
+  async ({ query, set }) => {
+    const parsed = ListMcpServersQuerySchema.safeParse(query ?? {})
+    if (!parsed.success) {
+      set.status = 400
+      return { error: 'Bad Request: ' + parsed.error.issues.map((i) => i.message).join('; ') }
+    }
+    return mcpServerService.list(parsed.data)
+  },
+  {
+    detail: {
+      tags: [DOC_TAGS.cherry],
+      summary: 'Admin: list MCP servers',
+      description: DOC_DESCRIPTIONS.admin_list_mcp_servers
+    }
+  }
+)
+
+/** Get a single MCP server by id (F-6). Read-only — no broadcast needed. */
+adminRoutes.get(
+  '/mcp/:id',
+  async ({ params, set }) => {
+    try {
+      return mcpServerService.getById(params.id)
+    } catch {
+      set.status = 404
+      return { error: `Not Found: McpServer ${params.id}` }
+    }
+  },
+  {
+    params: z.object({ id: z.string().min(1) }),
+    detail: {
+      tags: [DOC_TAGS.cherry],
+      summary: 'Admin: get MCP server',
+      description: DOC_DESCRIPTIONS.admin_get_mcp_server
     }
   }
 )

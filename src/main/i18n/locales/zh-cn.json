@@ -45,6 +45,7 @@
         "admin_add_provider_api_key": "为 provider 追加单个 API key（受管管理员路由，F-5）。Body：`{ \"key\": string, \"label\"?: string }`。广播 list + detail + api-keys 三个数据面。需要 `Authorization: Bearer <managed_key>`（独立受管管理密钥）。",
         "admin_list_skills": "列出已安装的全局技能（受管管理员路由，F-6）。只读。需要 `Authorization: Bearer <managed_key>`（独立受管管理密钥）。",
         "admin_list_mcp_servers": "列出 MCP 服务器（受管管理员路由，F-6）。只读。需要 `Authorization: Bearer <managed_key>`（独立受管管理密钥）。",
+        "admin_get_mcp_server": "按 id 获取单个 MCP 服务器（受管管理员路由，F-6）。只读。MCP 服务器不存在时返回 404。需要 `Authorization: Bearer <managed_key>`（独立受管管理密钥）。",
         "admin_list_agent_files": "列出 agent 工作区 / 工作目录集合（受管管理员路由，F-7b）。只读。需要 `Authorization: Bearer <managed_key>`（独立受管管理密钥）。"
       },
       "tags": {

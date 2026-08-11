@@ -85,7 +85,12 @@ export const DOC_DESCRIPTIONS = {
   admin_batch_upsert_providers: 'apiGateway.docs.operations.admin_batch_upsert_providers',
   admin_add_provider_api_key: 'apiGateway.docs.operations.admin_add_provider_api_key',
   admin_replace_provider_api_keys: 'apiGateway.docs.operations.admin_replace_provider_api_keys',
-  admin_read_usage: 'apiGateway.docs.operations.admin_read_usage'
+  admin_read_usage: 'apiGateway.docs.operations.admin_read_usage',
+  // F-6 / F-7b — managed admin read-only surface (skills / MCP / agent files).
+  admin_list_skills: 'apiGateway.docs.operations.admin_list_skills',
+  admin_list_mcp_servers: 'apiGateway.docs.operations.admin_list_mcp_servers',
+  admin_get_mcp_server: 'apiGateway.docs.operations.admin_get_mcp_server',
+  admin_list_agent_files: 'apiGateway.docs.operations.admin_list_agent_files'
 } as const
 
 type DocDescriptionSlot = keyof typeof DOC_DESCRIPTIONS
@@ -122,7 +127,11 @@ function docDescriptions(lang: LanguageVarious): Record<DocDescriptionSlot, stri
     admin_batch_upsert_providers: t('apiGateway.docs.operations.admin_batch_upsert_providers', undefined, lang),
     admin_add_provider_api_key: t('apiGateway.docs.operations.admin_add_provider_api_key', undefined, lang),
     admin_replace_provider_api_keys: t('apiGateway.docs.operations.admin_replace_provider_api_keys', undefined, lang),
-    admin_read_usage: t('apiGateway.docs.operations.admin_read_usage', undefined, lang)
+    admin_read_usage: t('apiGateway.docs.operations.admin_read_usage', undefined, lang),
+    admin_list_skills: t('apiGateway.docs.operations.admin_list_skills', undefined, lang),
+    admin_list_mcp_servers: t('apiGateway.docs.operations.admin_list_mcp_servers', undefined, lang),
+    admin_get_mcp_server: t('apiGateway.docs.operations.admin_get_mcp_server', undefined, lang),
+    admin_list_agent_files: t('apiGateway.docs.operations.admin_list_agent_files', undefined, lang)
   }
 }
 

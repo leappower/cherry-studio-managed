@@ -45,6 +45,7 @@
         "admin_add_provider_api_key": "Append a single API key to a provider (managed admin route, F-5). Body: `{ \"key\": string, \"label\"?: string }`. Broadcasts list + detail + api-keys surfaces. Requires `Authorization: Bearer <managed_key>` (the independent managed admin key).",
         "admin_list_skills": "List installed global skills (managed admin route, F-6). Read-only. Requires `Authorization: Bearer <managed_key>` (the independent managed admin key).",
         "admin_list_mcp_servers": "List MCP servers (managed admin route, F-6). Read-only. Requires `Authorization: Bearer <managed_key>` (the independent managed admin key).",
+        "admin_get_mcp_server": "Get a single MCP server by id (managed admin route, F-6). Read-only. Returns 404 when the MCP server does not exist. Requires `Authorization: Bearer <managed_key>` (the independent managed admin key).",
         "admin_list_agent_files": "List agent workspaces / working-directory collection (managed admin route, F-7b). Read-only. Requires `Authorization: Bearer <managed_key>` (the independent managed admin key)."
       },
       "tags": {
