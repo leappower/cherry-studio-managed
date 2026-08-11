@@ -8,6 +8,7 @@ import type { DbOrTx } from '@data/db/types'
 import { agentSessionService } from '@data/services/AgentSessionService'
 import { agentTaskService } from '@data/services/AgentTaskService'
 import { getDataService } from '@data/services/dataServiceRegistry'
+import { managedRegistryService } from '@data/services/ManagedRegistryService'
 import { modelService } from '@data/services/ModelService'
 import { pinService } from '@data/services/PinService'
 import { applyMoves, insertWithOrderKey } from '@data/services/utils/orderKey'
@@ -79,6 +80,21 @@ function getAgentDescription(description: string, configuration: unknown): strin
     }
   }
   return ''
+}
+
+/**
+ * Generalized managed-agent protection (F-8). Managed agents are immutable by
+ * the user: create/update/delete/reorder all throw `invalidOperation`. In M1 no
+ * agent is registered as managed (only the `cherryai` provider seed exists), so
+ * this guard is inert today but generalizes the protection for M2+ when the
+ * Sidecar registers managed agents.
+ */
+function assertManagedAgentAllowed(agentId: string, operation: string): void {
+  if (!managedRegistryService.isManaged('agent', agentId)) {
+    return
+  }
+
+  throw DataApiErrorFactory.invalidOperation(operation, 'managed agent cannot be modified')
 }
 
 function buildAgentSearchPredicate(search: string): SQL {
@@ -237,6 +253,7 @@ export class AgentService {
    * agent data directory) and supplies the already-reserved id.
    */
   createAgentWithId(id: string, req: AgentCreateInput): AgentEntity {
+    assertManagedAgentAllowed(id, `create agent ${id}`)
     // Reserved capability identity — see getBuiltinRole. Seeding writes via createAgentTx.
     if (getBuiltinRole(req.configuration) !== undefined) {
       throw DataApiErrorFactory.invalidOperation(
@@ -559,6 +576,7 @@ export class AgentService {
   }
 
   updateAgent(id: string, updates: UpdateAgentDto): AgentEntity | null {
+    assertManagedAgentAllowed(id, `update agent ${id}`)
     // Preserve the existing not-found precedence before validating related IDs.
     // The authoritative configuration read still happens inside the write tx.
     if (!this.findAgentRow(id)) return null
@@ -685,6 +703,7 @@ export class AgentService {
     id: string,
     options: { deleteSessions?: boolean } = {}
   ): { deleted: boolean; deletedSessionIds?: string[] } {
+    assertManagedAgentAllowed(id, `delete agent ${id}`)
     // By default sessions detach (agentId → NULL) via FK ON DELETE SET NULL; callers
     // can opt into deleting them in this same transaction. `pin` has no FK back
     // to agent, so purge it alongside the agent row. Junction table rows are
@@ -740,6 +759,7 @@ export class AgentService {
    * single global scope, so no scope predicate is passed to `applyMoves`.
    */
   reorder(id: string, anchor: OrderRequest): void {
+    assertManagedAgentAllowed(id, `reorder agent ${id}`)
     application.get('DbService').withWriteTx((tx) => this.reorderTx(tx, id, anchor))
     logger.info('Reordered agent', { id })
   }
@@ -758,6 +778,9 @@ export class AgentService {
 
   reorderBatch(moves: Array<{ id: string; anchor: OrderRequest }>): void {
     if (moves.length === 0) return
+    for (const move of moves) {
+      assertManagedAgentAllowed(move.id, `reorder agent ${move.id}`)
+    }
     application.get('DbService').withWriteTx((tx) => this.reorderBatchTx(tx, moves))
   }
 
