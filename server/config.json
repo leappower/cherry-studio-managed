@@ -2,6 +2,8 @@
   "host": "0.0.0.0",
   "port": 2334,
   "token": "dev-managed-token-2026",
+  "admin_user": "admin",
+  "admin_password_hash": "pbkdf2$100000$f185c5247b5c1d0927cf4498c0cda96c$4bee431c88d71865a7e39fe46b05152f2678fbc80f9e7b958fd13e62059b9cee",
   "db_path": "data/managed.db",
   "heartbeat_timeout": 60,
   "offline_queue": true,
