@@ -170,3 +170,44 @@
     Pop $1
     Pop $0
 !macroend
+
+; ============================================================
+; E-4 企业受管版集成（Managed Build）
+; ------------------------------------------------------------
+; 由企业受管版构建流水线（E-1/M1）设置编译期 define：
+;   MANAGED_BUILD=1   → 启用受管集成（Sidecar 服务 + 受管标记）
+;   SIDECAR_SERVICE   → Sidecar 服务名（NSSM，默认 cherry-sidecar）
+;   SIDECAR_EXE_NAME  → Sidecar 可执行文件名（默认 sidecar.exe）
+;
+; 官方版构建不定义 MANAGED_BUILD，本段不生效，不影响官方安装器。
+; ============================================================
+!ifndef SIDECAR_SERVICE
+  !define SIDECAR_SERVICE "cherry-sidecar"
+!endif
+!ifndef SIDECAR_EXE_NAME
+  !define SIDECAR_EXE_NAME "sidecar.exe"
+!endif
+
+; 安装阶段：写入受管标记环境变量 CHERRY_MANAGED_BUILD=1（受管运行时应用启动读取）
+!macro customInstall
+  !ifdef MANAGED_BUILD
+    DetailPrint "Setting managed build marker CHERRY_MANAGED_BUILD=1"
+    WriteRegStr HKCU "Environment" "CHERRY_MANAGED_BUILD" "1"
+    SendMessage ${HWND_BROADCAST} ${WM_WININICHANGE} 0 "STR:Environment" /TIMEOUT=5000
+  !endif
+!macroend
+
+; 卸载阶段：停止并移除 Sidecar 服务（NSSM），清理受管数据与受管标记
+!macro customUnInstall
+  !ifdef MANAGED_BUILD
+    DetailPrint "Removing managed Sidecar service (${SIDECAR_SERVICE})"
+    nsExec::ExecToLog 'net stop "${SIDECAR_SERVICE}"'
+    nsExec::ExecToLog '"$INSTDIR\resources\sidecar\nssm.exe" stop "${SIDECAR_SERVICE}"'
+    nsExec::ExecToLog '"$INSTDIR\resources\sidecar\nssm.exe" remove "${SIDECAR_SERVICE}" confirm'
+    Delete "$INSTDIR\resources\sidecar\managed_registry.db"
+    Delete "$INSTDIR\resources\sidecar\data\managed_registry.db"
+    RMDir /r "$INSTDIR\resources\sidecar\data"
+    DeleteRegValue HKCU "Environment" "CHERRY_MANAGED_BUILD"
+    SendMessage ${HWND_BROADCAST} ${WM_WININICHANGE} 0 "STR:Environment" /TIMEOUT=5000
+  !endif
+!macroend

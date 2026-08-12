@@ -92,6 +92,10 @@ win:
   extraResources:
     - from: "node_modules/@aiany/sqlite-vec-windows-${arch}/vec0.dll"
       to: "app.asar.unpacked/node_modules/@aiany/sqlite-vec-windows-${arch}/vec0.dll"
+    # E-4 企业受管版: 集成 Sidecar 可执行文件到 resources/sidecar/
+    # 路径由企业受管版构建流水线(E-1)注入 SIDECAR_EXE_PATH 环境变量；官方版不设则该资源跳过
+    - from: "${env.SIDECAR_EXE_PATH}"
+      to: "sidecar"
   target:
     - target: nsis
     - target: portable
