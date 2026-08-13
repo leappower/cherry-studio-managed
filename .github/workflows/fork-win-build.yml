@@ -41,7 +41,7 @@ on:
       - managed/**        # Fork 改动分支，自动触发
 
 permissions:
-  contents: read
+  contents: write       # 允许上传 GitHub Release 资产（安装包走 codeload CDN, 下载快）
   actions: write          # 允许清理/管理 artifacts
 
 jobs:
@@ -150,3 +150,26 @@ jobs:
           retention-days: 14
           compression-level: 8
           if-no-files-found: error
+
+      # --------------------------------------------------------------------
+      # E-1（批次 F）：上传安装包到 GitHub Release（走 codeload CDN, 下载快）
+      # 背景：GitHub Actions artifact 存储(Azure Blob) 对部分网络 IP 限速严重,
+      #       本地直下 artifact 极慢; Release 资产走 GitHub codeload CDN 可高速下载。
+      # 用 gh CLI(预装) 上传, 自动创建/复用 Release, tag 用短 SHA 区分每次构建。
+      # --------------------------------------------------------------------
+      - name: Upload installer to GitHub Release
+        shell: bash
+        run: |
+          set -euo pipefail
+          INSTALLER=$(find dist -maxdepth 1 -name "*-setup.exe" | head -1)
+          echo "上传安装包: $INSTALLER ($(du -h "$INSTALLER" | cut -f1))"
+          TAG="e1-build-${GITHUB_SHA::8}"
+          # 创建(或复用) Release 并上传资产
+          gh release create "$TAG" "$INSTALLER" \
+            --repo "${{ github.repository }}" \
+            --title "E1 Windows 安装包 (${GITHUB_SHA::8})" \
+            --notes "E-1 批次F: 含 sidecar.exe 的 CherryStudio 受管版 NSIS 安装包" \
+            --target "${{ github.sha }}" \
+            --clobber \
+          || gh release upload "$TAG" "$INSTALLER" --repo "${{ github.repository }}" --clobber
+          echo "Release 标签: $TAG"
