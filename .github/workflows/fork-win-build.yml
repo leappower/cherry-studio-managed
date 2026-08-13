@@ -120,7 +120,13 @@ jobs:
           test -f ../dist/sidecar.exe
           ls -la ../dist/sidecar.exe
           # 输出绝对路径给后续 build:win:x64 步骤（GITHUB_ENV 供同 job 后续步骤读取）
-          echo "SIDECAR_EXE_PATH=$(pwd)/../dist/sidecar.exe" >> "$GITHUB_ENV"
+          # ⚠️ 必须转成 Windows 路径：electron-builder 是 Windows 进程，Git Bash 的 $(pwd)
+          # 返回 POSIX 风格 /d/a/...，Windows 进程读不到 → extraResources 静默跳过 → 包装无 sidecar。
+          # 用 cygpath -w 转成 D:\a\... 格式（Git for Windows 自带 cygpath）。
+          SIDECAR_POSIX=$(pwd)/../dist/sidecar.exe
+          SIDECAR_WIN=$(cygpath -w "$SIDECAR_POSIX")
+          echo "SIDECAR_EXE_PATH=$SIDECAR_WIN" >> "$GITHUB_ENV"
+          echo "SIDECAR_EXE_PATH resolved to: $SIDECAR_WIN"
 
       - name: Pre-place ripgrep binary (rg.exe)
         # E-1：electron-builder 的 scripts/download-binaries.js 在打包前会下载 bundled binaries
