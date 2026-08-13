@@ -58,7 +58,7 @@ jobs:
           node-version-file: '.node-version'   # 24.11.1
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v5
+        uses: pnpm/action-setup@v6
         # 不传 version：pnpm/action-setup 自动读 package.json 的 packageManager 字段（pnpm@11.8.0+sha512...）
         # 避免与显式 version 冲突报 "Multiple versions of pnpm specified"（对齐官方 ci.yml/nightly-build.yml）
 
