@@ -50,7 +50,7 @@ jobs:
 
     steps:
       - name: Check out Git repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Install Node.js
         uses: actions/setup-node@v6
@@ -82,7 +82,7 @@ jobs:
       # E-1（批次 F）：Sidecar 构建与注入
       # --------------------------------------------------------------------
       - name: Check out cherry-managed repo (sidecar source)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: leappower/cherry-managed
           ref: master                    # sidecar 默认分支（build_windows.yml 在此分支）
