@@ -165,6 +165,9 @@ jobs:
           # 打包前把 electron-builder.yml 里这行的 from 替换成实际 Windows 路径
           # （YAML 单引号包裹，反斜杠按字面处理），保证 sidecar.exe 真被注入
           # resources/sidecar/。该改动仅发生在 runner 临时工作区，不会影响官方构建。
+          # ⚠️ Windows Python 默认 stdout 是 cp1252，print 中文会 UnicodeEncodeError
+          # （本次构建就是因此秒失败）→ 强制 UTF-8 输出。
+          export PYTHONIOENCODING=utf-8
           python - <<'PY'
           import os
           p = 'electron-builder.yml'
@@ -172,10 +175,10 @@ jobs:
           path = os.environ['SIDECAR_EXE_PATH']
           old = 'from: "${env.SIDECAR_EXE_PATH}"'
           new = "from: '%s'" % path.replace("'", "''")
-          assert old in s, "electron-builder.yml 中未找到 sidecar from 行"
+          assert old in s, 'sidecar from line not found in electron-builder.yml'
           s = s.replace(old, new)
           open(p, 'w', encoding='utf-8').write(s)
-          print('已替换 sidecar from 路径 ->', new)
+          print('replaced sidecar from path ->', new)
           PY
           # 确认替换生效
           grep -n "from:" electron-builder.yml | grep -i sidecar || true
