@@ -157,7 +157,29 @@ jobs:
 
       - name: Build Windows x64
         shell: bash
-        run: pnpm build:win:x64
+        run: |
+          set -euxo pipefail
+          # E-1（批次 F）：electron-builder 的 extraResources.from 只认静态路径，
+          # 不展开 ${env.X} 宏（日志佐证：migrations/... 等静态条目正常注入，
+          # 唯独依赖 ${env.SIDECAR_EXE_PATH} 的 sidecar 条目被静默跳过）。
+          # 打包前把 electron-builder.yml 里这行的 from 替换成实际 Windows 路径
+          # （YAML 单引号包裹，反斜杠按字面处理），保证 sidecar.exe 真被注入
+          # resources/sidecar/。该改动仅发生在 runner 临时工作区，不会影响官方构建。
+          python - <<'PY'
+          import os
+          p = 'electron-builder.yml'
+          s = open(p, encoding='utf-8').read()
+          path = os.environ['SIDECAR_EXE_PATH']
+          old = 'from: "${env.SIDECAR_EXE_PATH}"'
+          new = "from: '%s'" % path.replace("'", "''")
+          assert old in s, "electron-builder.yml 中未找到 sidecar from 行"
+          s = s.replace(old, new)
+          open(p, 'w', encoding='utf-8').write(s)
+          print('已替换 sidecar from 路径 ->', new)
+          PY
+          # 确认替换生效
+          grep -n "from:" electron-builder.yml | grep -i sidecar || true
+          pnpm build:win:x64
         env:
           # 签名处理（见文件头说明）：不设 WIN_SIGN / CSC_* → 临时禁用签名，出包不阻塞。
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'   # 兜底：禁止自动发现本机证书
