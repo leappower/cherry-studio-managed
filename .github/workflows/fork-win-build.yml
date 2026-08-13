@@ -186,17 +186,23 @@ jobs:
       # --------------------------------------------------------------------
       - name: Upload installer to GitHub Release
         shell: bash
+        env:
+          # gh CLI 在 Actions 中必须显式指定 token；permissions.contents:write 已给权限
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           INSTALLER=$(find dist -maxdepth 1 -name "*-setup.exe" | head -1)
           echo "上传安装包: $INSTALLER ($(du -h "$INSTALLER" | cut -f1))"
           TAG="e1-build-${GITHUB_SHA::8}"
-          # 创建(或复用) Release 并上传资产
-          gh release create "$TAG" "$INSTALLER" \
-            --repo "${{ github.repository }}" \
-            --title "E1 Windows 安装包 (${GITHUB_SHA::8})" \
-            --notes "E-1 批次F: 含 sidecar.exe 的 CherryStudio 受管版 NSIS 安装包" \
-            --target "${{ github.sha }}" \
-            --clobber \
-          || gh release upload "$TAG" "$INSTALLER" --repo "${{ github.repository }}" --clobber
+          # 创建 Release 并上传资产（旧版 gh 不支持 --clobber，故不用；
+          # 若 tag 已存在则改为 upload 追加资产）
+          if gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$INSTALLER" --repo "${{ github.repository }}"
+          else
+            gh release create "$TAG" "$INSTALLER" \
+              --repo "${{ github.repository }}" \
+              --title "E1 Windows 安装包 (${GITHUB_SHA::8})" \
+              --notes "E-1 批次F: 含 sidecar.exe 的 CherryStudio 受管版 NSIS 安装包" \
+              --target "${{ github.sha }}"
+          fi
           echo "Release 标签: $TAG"
