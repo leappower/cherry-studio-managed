@@ -20,6 +20,18 @@
 #   注：未签名包在 Windows SmartScreen 会提示"未知发布者"，仅用于 M0 求证阶段内网验证，
 #       正式发布签名属后续 F-11/E-2 范围，届时再引入受管签名（WIN_SIGN + 证书 secrets）。
 
+# Sidecar 注入（E-1，批次 F）：
+#   本 workflow 负责把 cherry-managed 仓库构建出的 sidecar.exe 注入到 NSIS 安装包。
+#   - 在 pnpm build:win:x64 之前，Checkout cherry-managed 仓库（leappower/cherry-managed, 默认分支 master）
+#     到 ./sidecar-src 临时目录，用 PyInstaller 构建 sidecar.exe（命令与 cherry-managed/.github/workflows/build_windows.yml 同款）。
+#   - 设置 env SIDECAR_EXE_PATH 指向该 sidecar.exe 的绝对路径，electron-builder 的
+#     electron-builder.yml extraResources 读 ${env.SIDECAR_EXE_PATH} 把它打进 resources/sidecar/。
+#   - 若 sidecar 构建失败（关键步骤 set -e 且 test -f 校验产物），workflow 明确失败，
+#     不静默产出无 Sidecar 的安装包。
+#   - 签名策略保持不变：不设 WIN_SIGN / CSC_*，仅 CSC_IDENTITY_AUTO_DISCOVERY=false 兜底。
+#   - ⛔ 本 workflow 只改 fork-win-build.yml；不改动官方 nightly-build.yml / ci.yml，
+#     不改动 cherry-managed/.github/workflows/build_windows.yml（sidecar 独立构建流水线）。
+
 name: Fork Windows Build
 
 on:
@@ -66,12 +78,55 @@ jobs:
       - name: Install Dependencies
         run: pnpm install
 
+      # --------------------------------------------------------------------
+      # E-1（批次 F）：Sidecar 构建与注入
+      # --------------------------------------------------------------------
+      - name: Check out cherry-managed repo (sidecar source)
+        uses: actions/checkout@v4
+        with:
+          repository: leappower/cherry-managed
+          ref: master                    # sidecar 默认分支（build_windows.yml 在此分支）
+          path: './sidecar-src'           # 临时目录，避免与主仓库工作区冲突
+
+      - name: Set up Python (PyInstaller)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'          # 与 cherry-managed build_windows.yml 的 setup-python 版本一致
+
+      - name: Install sidecar build dependencies
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller websocket-client
+
+      - name: Build sidecar.exe (PyInstaller)
+        id: sidecar-build
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cd ./sidecar-src/sidecar
+          # 直接传 scripts/build.spec 打包（spec 内已用 EXE() 指定 one-file，产物名为 sidecar.exe）。
+          # 注意：build_windows.yml 里的命令带了 --onefile / --specpath，这两个是 makespec-only 选项，
+          # 当直接传入 .spec 文件时 PyInstaller 会报 "makespec options not valid when a .spec file is given"。
+          # 此处采用正确写法（仅 --distpath / --workpath），等价产出，避免 workflow 每次必失败。
+          pyinstaller --clean --noconfirm \
+            --distpath ../dist --workpath ../build \
+            scripts/build.spec
+          # 明确校验产物存在；缺失即 fail，防止静默产出无 sidecar 的安装包
+          test -f ../dist/sidecar.exe
+          ls -la ../dist/sidecar.exe
+          # 输出绝对路径给后续 build:win:x64 步骤（GITHUB_ENV 供同 job 后续步骤读取）
+          echo "SIDECAR_EXE_PATH=$(pwd)/../dist/sidecar.exe" >> "$GITHUB_ENV"
+
       - name: Build Windows x64
         shell: bash
         run: pnpm build:win:x64
         env:
           # 签名处理（见文件头说明）：不设 WIN_SIGN / CSC_* → 临时禁用签名，出包不阻塞。
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'   # 兜底：禁止自动发现本机证书
+          # E-1：注入 sidecar.exe 绝对路径，electron-builder 读 ${env.SIDECAR_EXE_PATH}
+          # 经 electron-builder.yml extraResources → resources/sidecar（未注入时该资源跳过）。
+          SIDECAR_EXE_PATH: ${{ env.SIDECAR_EXE_PATH }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NODE_OPTIONS: --max-old-space-size=8192
 
