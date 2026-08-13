@@ -87,6 +87,10 @@ jobs:
           repository: leappower/cherry-managed
           ref: master                    # sidecar 默认分支（build_windows.yml 在此分支）
           path: './sidecar-src'           # 临时目录，避免与主仓库工作区冲突
+          # cherry-managed 是私有仓库，actions/checkout 默认用 GITHUB_TOKEN（仅对
+          # 当前 workflow 所在仓库有权限）无法跨仓读私有仓库 → 注入专用 PAT secret。
+          # 该 PAT 由 leappower 账号签发，存于仓库 Actions secret，不回显、不泄露。
+          token: ${{ secrets.CHERRY_MANAGED_PAT }}
 
       - name: Set up Python (PyInstaller)
         uses: actions/setup-python@v5
