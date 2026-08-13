@@ -122,6 +122,33 @@ jobs:
           # 输出绝对路径给后续 build:win:x64 步骤（GITHUB_ENV 供同 job 后续步骤读取）
           echo "SIDECAR_EXE_PATH=$(pwd)/../dist/sidecar.exe" >> "$GITHUB_ENV"
 
+      - name: Pre-place ripgrep binary (rg.exe)
+        # E-1：electron-builder 的 scripts/download-binaries.js 在打包前会下载 bundled binaries
+        # （mise/bun/uv/ripgrep/MinGit）到 resources/binaries/<platform>-<arch>/，然后
+        # verifyBundledBinaries 校验文件是否存在。日志显示 ripgrep 下载偶发失败
+        # （curl: (52) Empty reply from server）→ rg.exe 缺失 → 打包中断。
+        # 此处先独立预置 rg.exe（带多次重试 + 校验和），verify 时文件已存在即通过，
+        # 避免依赖 download-binaries.js 那次易失败的下载。
+        shell: bash
+        run: |
+          set -euxo pipefail
+          DEST="resources/binaries/win32-x64"
+          mkdir -p "$DEST"
+          if [ ! -f "$DEST/rg.exe" ]; then
+            URL="https://github.com/BurntSushi/ripgrep/releases/download/14.1.1/ripgrep-14.1.1-x86_64-pc-windows-msvc.zip"
+            for i in 1 2 3 4 5; do
+              echo "尝试 $i: 下载 rg.zip"
+              if curl -fSL --retry 3 --retry-all-errors -C - -o rg.zip "$URL"; then break; fi
+              sleep 5
+            done
+            test -f rg.zip
+            echo "d0f534024c42afd6cb4d38907c25cd2b249b79bbe6cc1dbee8e3e37c2b6e25a1 *rg.zip" | sha256sum -c -
+            unzip -o rg.zip -d rg_extract
+            cp rg_extract/ripgrep-14.1.1-x86_64-pc-windows-msvc/rg.exe "$DEST/rg.exe"
+            rm -rf rg.zip rg_extract
+          fi
+          ls -la "$DEST/rg.exe"
+
       - name: Build Windows x64
         shell: bash
         run: pnpm build:win:x64
