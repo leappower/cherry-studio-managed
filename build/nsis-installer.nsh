@@ -174,32 +174,55 @@
 ; ============================================================
 ; E-4 企业受管版集成（Managed Build）
 ; ------------------------------------------------------------
-; 由企业受管版构建流水线（E-1/M1）设置编译期 define：
-;   MANAGED_BUILD=1   → 启用受管集成（Sidecar 服务 + 受管标记）
-;   SIDECAR_SERVICE   → Sidecar 服务名（NSSM，默认 cherry-sidecar）
-;   SIDECAR_EXE_NAME  → Sidecar 可执行文件名（默认 sidecar.exe）
+; 受管版开启方式（构建流水线 fork-win-build.yml 设置环境变量）：
+;   MANAGED_BUILD=1 → 启用受管集成（Sidecar 服务 + 受管标记）
 ;
-; 官方版构建不定义 MANAGED_BUILD，本段不生效，不影响官方安装器。
+;   SIDECAR_SERVICE  → Sidecar 服务名（NSSM，默认 CherrySidecar，
+;                      与 sidecar.py SERVICE_NAME 保持一致，勿改）
+;   SIDECAR_EXE_NAME → Sidecar 可执行文件名（默认 sidecar.exe）
+;
+; ⚠️ 为什么用 ${env:MANAGED_BUILD} 而非 electron-builder define：
+;   electron-builder 的 NSIS defines 是固定列表（APP_ID/UNINSTALL_APP_KEY/
+;   PRODUCT_NAME 等），不支持自定义 define，因此原来“由构建流水线设置
+;   MANAGED_BUILD define”的设想无法实现（!ifdef MANAGED_BUILD 永远不生效）。
+;   改用 NSIS 原生编译期环境变量 ${env:MANAGED_BUILD}：构建时设置环境变量
+;   MANAGED_BUILD=1 即编译进受管逻辑；官方版不设则为空 → !if 分支跳过。
+;
+; nssm.exe 由构建流水线（fork-win-build.yml）内置到
+;   $INSTDIR\resources\sidecar\nssm.exe
+; （sidecar.exe 与 nssm.exe 同级），sidecar.py _find_nssm() 通过
+; sys.executable.parent 定位到同一目录。
+;
+; 官方版构建不设置 MANAGED_BUILD 环境变量，本段不生效，不影响官方安装器。
 ; ============================================================
 !ifndef SIDECAR_SERVICE
-  !define SIDECAR_SERVICE "cherry-sidecar"
+  !define SIDECAR_SERVICE "CherrySidecar"
 !endif
 !ifndef SIDECAR_EXE_NAME
   !define SIDECAR_EXE_NAME "sidecar.exe"
 !endif
+!ifndef MANAGED_BUILD
+  !define MANAGED_BUILD "${env:MANAGED_BUILD}"
+!endif
 
-; 安装阶段：写入受管标记环境变量 CHERRY_MANAGED_BUILD=1（受管运行时应用启动读取）
+; 安装阶段：写入受管标记环境变量 CHERRY_MANAGED_BUILD=1（受管运行时应用启动读取），
+; 并调用 sidecar first-run 完成首次初始化（落盘用户级 config + 生成 device_id +
+; 注册并启动 NSSM 服务 CherrySidecar）—— 实现“装完即用”，无需任何手动步骤。
+; ⚠️ first-run 依赖同目录 nssm.exe（构建流水线内置），缺失则服务注册失败。
 !macro customInstall
-  !ifdef MANAGED_BUILD
+  !if "${MANAGED_BUILD}" == "1"
     DetailPrint "Setting managed build marker CHERRY_MANAGED_BUILD=1"
     WriteRegStr HKCU "Environment" "CHERRY_MANAGED_BUILD" "1"
     SendMessage ${HWND_BROADCAST} ${WM_WININICHANGE} 0 "STR:Environment" /TIMEOUT=5000
+
+    DetailPrint "Running sidecar first-run (init config + register ${SIDECAR_SERVICE} service)"
+    nsExec::ExecToLog '"$INSTDIR\resources\sidecar\${SIDECAR_EXE_NAME}" first-run'
   !endif
 !macroend
 
 ; 卸载阶段：停止并移除 Sidecar 服务（NSSM），清理受管数据与受管标记
 !macro customUnInstall
-  !ifdef MANAGED_BUILD
+  !if "${MANAGED_BUILD}" == "1"
     DetailPrint "Removing managed Sidecar service (${SIDECAR_SERVICE})"
     nsExec::ExecToLog 'net stop "${SIDECAR_SERVICE}"'
     nsExec::ExecToLog '"$INSTDIR\resources\sidecar\nssm.exe" stop "${SIDECAR_SERVICE}"'

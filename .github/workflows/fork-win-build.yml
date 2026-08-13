@@ -155,6 +155,45 @@ jobs:
           fi
           ls -la "$DEST/rg.exe"
 
+      - name: Pre-place nssm.exe (sidecar service manager)
+        # E-4（开箱即用）：sidecar 用 NSSM 注册为 Windows 服务 CherrySidecar。
+        # sidecar.py _find_nssm() 通过 sys.executable.parent 定位 nssm.exe，
+        # 而 onefile 解压后 sidecar.exe 在 $INSTDIR\resources\sidecar\，
+        # 故把 nssm.exe 内置到 resources/sidecar/nssm.exe 即可被找到。
+        # NSIS 卸载脚本也用 $INSTDIR\resources\sidecar\nssm.exe 停/删服务，
+        # 位置必须与 sidecar.exe 同级。nssm.cc 偶发不稳，先试官方，失败用 GitHub 镜像。
+        shell: bash
+        run: |
+          set -euxo pipefail
+          DEST="resources/sidecar"
+          mkdir -p "$DEST"
+          if [ ! -f "$DEST/nssm.exe" ]; then
+            # 官方 nssm 2.24（zip 内结构 nssm-2.24/win64/nssm.exe）
+            for i in 1 2 3 4 5; do
+              echo "尝试 $i: 下载 nssm 官方包"
+              if curl -fSL --retry 3 --retry-all-errors -o nssm.zip "https://nssm.cc/release/nssm-2.24.zip"; then break; fi
+              sleep 5
+            done
+            if [ ! -s nssm.zip ]; then
+              # 官方源失败 → GitHub 镜像（kohsuke/nssm 或 fzf 镜像不可靠，用 dotnetcore 镜像更稳）
+              for i in 1 2 3 4 5; do
+                echo "尝试 $i: 下载 nssm GitHub 镜像"
+                if curl -fSL --retry 3 --retry-all-errors -o nssm.zip \
+                  "https://github.com/leappower/cherry-studio-managed/releases/download/nssm-mirror/nssm-2.24.zip"; then break; fi
+                sleep 5
+              done
+            fi
+            test -s nssm.zip
+            unzip -o nssm.zip -d nssm_extract
+            # 兼容两种 zip 结构：win64/ 或 nssm-2.24/win64/
+            NSSM_EXE=$(find nssm_extract -name "nssm.exe" -path "*win64*" | head -1)
+            test -n "$NSSM_EXE"
+            cp "$NSSM_EXE" "$DEST/nssm.exe"
+            rm -rf nssm.zip nssm_extract
+          fi
+          ls -la "$DEST/nssm.exe"
+          file "$DEST/nssm.exe" 2>/dev/null || true
+
       - name: Build Windows x64
         shell: bash
         run: |
@@ -189,6 +228,7 @@ jobs:
           # E-1：注入 sidecar.exe 绝对路径，electron-builder 读 ${env.SIDECAR_EXE_PATH}
           # 经 electron-builder.yml extraResources → resources/sidecar（未注入时该资源跳过）。
           SIDECAR_EXE_PATH: ${{ env.SIDECAR_EXE_PATH }}
+          MANAGED_BUILD: '1'
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NODE_OPTIONS: --max-old-space-size=8192
 
