@@ -217,10 +217,30 @@
 
     DetailPrint "Running sidecar first-run (init config + register ${SIDECAR_SERVICE} service)"
     nsExec::ExecToLog '"$INSTDIR\resources\sidecar\${SIDECAR_EXE_NAME}" first-run'
+
+    ; ------------------------------------------------------------
+    ; E-4（批次 F）：局域网访问自动化 —— 开箱即用（无需手动配防火墙/转发）
+    ; ------------------------------------------------------------
+    ; CherryStudio 官方 API Gateway 写死监听 127.0.0.1:23333（本机回环），
+    ; 局域网其他机器无法访问。用 Windows 端口转发（portproxy）把
+    ; 0.0.0.0:23333 → 127.0.0.1:23333，再加防火墙入站放行，实现局域网可达。
+    ; customInit 已保证本宏以管理员权限运行（per-machine 安装自动提权）。
+    ; 幂等：先删除旧规则再新建，重复安装/升级不报错。
+    ; ⚠️ netsh interface portproxy 依赖 Windows IP Helper 服务(iphlpsvc)，
+    ;    若被禁用则转发不生效 → 安装时确保其运行并设为自动。
+    DetailPrint "Enabling LAN access: portproxy 0.0.0.0:23333 -> 127.0.0.1:23333"
+    nsExec::ExecToLog 'sc config iphlpsvc start= auto'
+    nsExec::ExecToLog 'net start iphlpsvc'
+    nsExec::ExecToLog 'netsh interface portproxy delete v4tov4 listenaddress=0.0.0.0 listenport=23333'
+    nsExec::ExecToLog 'netsh interface portproxy add v4tov4 listenaddress=0.0.0.0 listenport=23333 connectaddress=127.0.0.1 connectport=23333'
+
+    DetailPrint "Adding firewall rule: CherryStudio API 23333 (LAN inbound)"
+    nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="CherryStudio API"'
+    nsExec::ExecToLog 'netsh advfirewall firewall add rule name="CherryStudio API" dir=in action=allow protocol=TCP localport=23333'
   !endif
 !macroend
 
-; 卸载阶段：停止并移除 Sidecar 服务（NSSM），清理受管数据与受管标记
+; 卸载阶段：停止并移除 Sidecar 服务（NSSM），清理受管数据、受管标记与局域网转发规则
 !macro customUnInstall
   !if "${MANAGED_BUILD}" == "1"
     DetailPrint "Removing managed Sidecar service (${SIDECAR_SERVICE})"
@@ -232,5 +252,10 @@
     RMDir /r "$INSTDIR\resources\sidecar\data"
     DeleteRegValue HKCU "Environment" "CHERRY_MANAGED_BUILD"
     SendMessage ${HWND_BROADCAST} ${WM_WININICHANGE} 0 "STR:Environment" /TIMEOUT=5000
+
+    ; 卸载时清理局域网转发规则与防火墙规则（不留脏配置）
+    DetailPrint "Cleaning up LAN portproxy and firewall rule"
+    nsExec::ExecToLog 'netsh interface portproxy delete v4tov4 listenaddress=0.0.0.0 listenport=23333'
+    nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="CherryStudio API"'
   !endif
 !macroend
