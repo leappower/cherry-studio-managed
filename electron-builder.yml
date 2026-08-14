@@ -95,7 +95,12 @@ win:
     # E-4 企业受管版: 集成 Sidecar 可执行文件到 resources/sidecar/
     # 路径由企业受管版构建流水线(E-1)注入 SIDECAR_EXE_PATH 环境变量；官方版不设则该资源跳过
     - from: "${env.SIDECAR_EXE_PATH}"
-      to: "sidecar"
+      # ⚠️ to 必须是子目录+文件名 "sidecar/sidecar.exe"：
+      #    1) .exe 后缀对齐 nsis-installer.nsh 的 SIDECAR_EXE_NAME="sidecar.exe"（否则 FileExists 判 false）
+      #    2) 子目录 sidecar/ 对齐 CI fork-win-build.yml 的 DEST="resources/sidecar"（nssm.exe 同级预置）
+      #    之前 to:"sidecar" 把 sidecar 扁平生成 resources\sidecar（无扩展名文件），
+      #    导致受管逻辑永不触发 + nssm 无法预置，是局域网不通且服务不注册的根因。
+      to: "sidecar/sidecar.exe"
   target:
     - target: nsis
     - target: portable
