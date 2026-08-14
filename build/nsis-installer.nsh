@@ -11,6 +11,19 @@
 !include x64.nsh
 !include FileFunc.nsh
 
+; ------------------------------------------------------------
+; 受管版（Fork）vs 官方版编译期开关
+; ------------------------------------------------------------
+; MANAGED_BUILD=1（构建环境变量，fork-win-build.yml 设置）→ 启用受管集成
+; （Sidecar 服务 + 受管标记 + 局域网访问配置）。官方版构建不设该变量 → 以下
+; 所有受管专属逻辑（含管理员要求）全部跳过，不影响官方安装器行为。
+; ⚠️ 为什么用 ${env:MANAGED_BUILD} 而非 electron-builder define：
+;    electron-builder 的 NSIS define 是固定列表、不支持自定义 define，
+;    !ifdef MANAGED_BUILD 永远不生效。改用 NSIS 原生编译期环境变量。
+!ifndef MANAGED_BUILD
+  !define MANAGED_BUILD "${env:MANAGED_BUILD}"
+!endif
+
 ; https://github.com/electron-userland/electron-builder/issues/1122
 !ifndef BUILD_UNINSTALLER
   ; Check VC++ Redistributable based on architecture stored in $1
@@ -81,6 +94,20 @@
 !endif
 
 !macro customInit
+  ; 受管版强制要求管理员安装：非管理员直接弹警告并中止安装。
+  ; 理由：受管版安装需配防火墙放行局域网访问（netsh 需管理员），且要注册
+  ; sidecar 服务；非管理员装出来是“半残状态”（CherryStudio 能跑但局域网连
+  ; 不上），小白用户不会排查。宁可装不了明确提示，也绝不留下半残状态。
+  ; 官方版不要求管理员，保持原样。
+  !if "${MANAGED_BUILD}" == "1"
+    UserInfo::GetAccountType
+    Pop $0
+    ${If} $0 != "admin"
+      MessageBox MB_ICONSTOP|MB_OK "CherryStudio 受管版需要管理员权限才能正确安装。$\r$\n$\r$\n请关闭此窗口，右键安装程序选择“以管理员身份运行”后重试。"
+      Abort
+    ${EndIf}
+  !endif
+
   ; If a per-machine (all users) installation exists, ensure we have admin privileges.
   ; Without elevation, the installer cannot close the running app or manage the
   ; per-machine installation, causing "cannot close app" errors during both
@@ -200,9 +227,6 @@
 !endif
 !ifndef SIDECAR_EXE_NAME
   !define SIDECAR_EXE_NAME "sidecar.exe"
-!endif
-!ifndef MANAGED_BUILD
-  !define MANAGED_BUILD "${env:MANAGED_BUILD}"
 !endif
 
 ; ------------------------------------------------------------
