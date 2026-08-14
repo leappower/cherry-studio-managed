@@ -208,19 +208,17 @@
 ; ------------------------------------------------------------
 ; E-4（批次 F）：局域网访问自动化 —— 开箱即用（无需手动配防火墙/转发）
 ; ------------------------------------------------------------
-; CherryStudio 官方 API Gateway 强制监听 127.0.0.1:23333（本机回环），
-; 局域网其他机器无法访问。用 Windows 端口转发（portproxy）把
-; 0.0.0.0:23333 → 127.0.0.1:23333，加防火墙入站放行，实现局域网可达。
+; 受管版 CherryStudio API 已改为监听 0.0.0.0:23333（全网卡，见
+; src/main/features/apiGateway/server.ts 的受管版 host 默认值逻辑），因此
+; 局域网机器可直接访问 23333，无需端口转发；也不再启用 iphlpsvc/portproxy
+; （实测：portproxy 会把 0.0.0.0:23333 占住，挡住 CherryStudio 绑定
+; 127.0.0.1:23333，导致 API 起不来 —— 是有害的，必须移除）。
+; 这里只需保留一条防火墙入站放行规则，让局域网能进 23333。
 ;
 ; ⚠️ 为什么不再只放在 customInstall 里：
 ;    customInstall 依赖 customInit 提权成功；per-user 安装或提权链未走通时，
-;    这段 netsh 会被静默跳过（之前 94 号机实测：装了新包但规则未建）。
-;    现在抽成独立宏 LANSetup，在 customInstall 内无条件调用，并自检管理员：
-;    非管理员自动提权重跑；每次 netsh 用 nsExec::Exec 捕获返回值，失败弹窗报错，
-;    绝不静默吞掉。
-;
-; ⚠️ netsh interface portproxy 依赖 Windows IP Helper 服务(iphlpsvc)，
-;    若被禁用则转发不生效 → 先确保其运行并设为自动。
+;    netsh 会被静默跳过。现在抽成独立宏 LANSetup，无条件调用，并自检管理员：
+;    非管理员自动提权重跑；用 nsExec::Exec 捕获返回值，失败弹窗报错，绝不静默吞。
 ; ------------------------------------------------------------
 !macro LANSetup
   !if "${MANAGED_BUILD}" == "1"
@@ -239,23 +237,8 @@ $
       Return
     ${EndIf}
 
-    DetailPrint "Enabling LAN access: portproxy 0.0.0.0:23333 -> 127.0.0.1:23333"
-    ; 确保 IP Helper 服务运行
-    nsExec::Exec 'sc config iphlpsvc start= auto'
-    Pop $1
-    nsExec::Exec 'net start iphlpsvc'
-    Pop $1
-
-    ; 端口转发（先删旧再加，幂等）
-    nsExec::Exec 'netsh interface portproxy delete v4tov4 listenaddress=0.0.0.0 listenport=23333'
-    Pop $1
-    nsExec::Exec 'netsh interface portproxy add v4tov4 listenaddress=0.0.0.0 listenport=23333 connectaddress=127.0.0.1 connectport=23333'
-    Pop $1
-    ${If} $1 != 0
-      DetailPrint "portproxy 添加失败（code=$1），跳过（可能无管理员/系统限制）"
-    ${EndIf}
-
-    ; 防火墙放行 23333 入站（先删旧再添）
+    DetailPrint "Enabling LAN access: firewall allow inbound TCP 23333"
+    ; 防火墙放行 23333 入站（先删旧再添，幂等）——CherryStudio API 监听全网卡，直连即可
     nsExec::Exec 'netsh advfirewall firewall delete rule name="CherryStudio API"'
     Pop $1
     nsExec::Exec 'netsh advfirewall firewall add rule name="CherryStudio API" dir=in action=allow protocol=TCP localport=23333'
@@ -298,9 +281,8 @@ $
     DeleteRegValue HKCU "Environment" "CHERRY_MANAGED_BUILD"
     SendMessage ${HWND_BROADCAST} ${WM_WININICHANGE} 0 "STR:Environment" /TIMEOUT=5000
 
-    ; 卸载时清理局域网转发规则与防火墙规则（不留脏配置）
-    DetailPrint "Cleaning up LAN portproxy and firewall rule"
-    nsExec::ExecToLog 'netsh interface portproxy delete v4tov4 listenaddress=0.0.0.0 listenport=23333'
+    ; 卸载时清理防火墙放行规则（不留脏配置）。portproxy 不再创建，无需处理。
+    DetailPrint "Cleaning up firewall rule"
     nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="CherryStudio API"'
   !endif
 !macroend

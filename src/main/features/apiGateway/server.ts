@@ -40,7 +40,14 @@ export class ApiGateway {
     // Load config from preference service
     const preferenceService = application.get('PreferenceService')
     const port = preferenceService.get('feature.api_gateway.port')
-    const host = preferenceService.get('feature.api_gateway.host')
+    const configuredHost = preferenceService.get('feature.api_gateway.host')
+    // Managed (Fork) builds listen on all interfaces so the API is reachable from
+    // the LAN out-of-the-box. The NSIS installer sets CHERRY_MANAGED_BUILD=1; the
+    // official build keeps the loopback-only default (never exposed to the LAN).
+    // Only override when the user has not explicitly pinned a non-loopback host.
+    const isManaged = process.env.CHERRY_MANAGED_BUILD === '1'
+    const host =
+      isManaged && (configuredHost === '127.0.0.1' || configuredHost === 'localhost') ? '0.0.0.0' : configuredHost
 
     const app = buildApp({ host, port })
     this.app = app
