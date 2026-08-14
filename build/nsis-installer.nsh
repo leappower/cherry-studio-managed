@@ -259,9 +259,7 @@
       ${GetParameters} $1
       ExecShell "runas" "$EXEPATH" "$1"
       ${If} ${Errors}
-        MessageBox MB_ICONEXCLAMATION "CherryStudio 受管版需要管理员权限配置局域网访问。$
-$
-请右键安装程序选择“以管理员身份运行”后重试。"
+        MessageBox MB_ICONEXCLAMATION "CherryStudio 受管版需要管理员权限配置局域网访问。$\r$\n请右键安装程序选择“以管理员身份运行”后重试。"
       ${EndIf}
       Return
     ${EndIf}
