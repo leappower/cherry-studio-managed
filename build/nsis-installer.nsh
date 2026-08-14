@@ -245,8 +245,13 @@
 ;    非管理员自动提权重跑；用 nsExec::Exec 捕获返回值，失败弹窗报错，绝不静默吞。
 ; ------------------------------------------------------------
 !macro LANSetup
-  !if "${MANAGED_BUILD}" == "1"
-    ; 确认管理员权限（per-user 安装也可能到这里，需提权）
+  ; 受管版才需配防火墙。运行时判断安装包是否带 sidecar（受管版 extraResources
+  ; 必然打进 $INSTDIR\resources\sidecar\，官方版没有）；不再依赖编译期
+  ; ${env:MANAGED_BUILD}（makensis 编译时不可靠，曾致受管逻辑被整体剔除）。
+  ${IfNot} ${FileExists} "$INSTDIR\resources\sidecar\${SIDECAR_EXE_NAME}"
+    Return
+  ${EndIf}
+  ; 确认管理员权限（per-user 安装也可能到这里，需提权）
     UserInfo::GetAccountType
     Pop $0
     ${If} $0 != "admin"
@@ -271,7 +276,6 @@ $
       DetailPrint "防火墙规则添加失败（code=$1）"
     ${EndIf}
     DetailPrint "LANSetup done"
-  !endif
 !macroend
 
 ; 安装阶段：写入受管标记环境变量 CHERRY_MANAGED_BUILD=1（受管运行时应用启动读取），
@@ -279,7 +283,10 @@ $
 ; 注册并启动 NSSM 服务 CherrySidecar）—— 实现“装完即用”，无需任何手动步骤。
 ; ⚠️ first-run 依赖同目录 nssm.exe（构建流水线内置），缺失则服务注册失败。
 !macro customInstall
-  !if "${MANAGED_BUILD}" == "1"
+  ; 受管版才写受管标记、注册 sidecar 服务；官方版无 sidecar 目录则跳过。
+  ; 判断改为运行时 FileExists（受管版安装包必然带 resources\sidecar\，
+  ; 不再依赖编译期 ${env:MANAGED_BUILD} 宏——该宏在 makensis 编译时不可靠）。
+  ${If} ${FileExists} "$INSTDIR\resources\sidecar\${SIDECAR_EXE_NAME}"
     DetailPrint "Setting managed build marker CHERRY_MANAGED_BUILD=1"
     WriteRegStr HKCU "Environment" "CHERRY_MANAGED_BUILD" "1"
     SendMessage ${HWND_BROADCAST} ${WM_WININICHANGE} 0 "STR:Environment" /TIMEOUT=5000
@@ -287,14 +294,16 @@ $
     DetailPrint "Running sidecar first-run (init config + register ${SIDECAR_SERVICE} service)"
     nsExec::ExecToLog '"$INSTDIR\resources\sidecar\${SIDECAR_EXE_NAME}" first-run'
 
-    ; 无条件执行局域网配置（含自检权限 + 失败报错，不再依赖 customInit 提权）
+    ; 无条件执行局域网配置（含自检权限 + 失败报错，不依赖 customInit 提权）
     !insertmacro LANSetup
-  !endif
+  ${EndIf}
 !macroend
 
 ; 卸载阶段：停止并移除 Sidecar 服务（NSSM），清理受管数据、受管标记与局域网转发规则
 !macro customUnInstall
-  !if "${MANAGED_BUILD}" == "1"
+  ; 受管版才清理 sidecar 服务/数据/防火墙；官方版无 sidecar 目录则跳过。
+  ; 运行时判断（不依赖编译期 ${env:MANAGED_BUILD} 宏）。
+  ${If} ${FileExists} "$INSTDIR\resources\sidecar\${SIDECAR_EXE_NAME}"
     DetailPrint "Removing managed Sidecar service (${SIDECAR_SERVICE})"
     nsExec::ExecToLog 'net stop "${SIDECAR_SERVICE}"'
     nsExec::ExecToLog '"$INSTDIR\resources\sidecar\nssm.exe" stop "${SIDECAR_SERVICE}"'
@@ -308,5 +317,5 @@ $
     ; 卸载时清理防火墙放行规则（不留脏配置）。portproxy 不再创建，无需处理。
     DetailPrint "Cleaning up firewall rule"
     nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="CherryStudio API"'
-  !endif
+  ${EndIf}
 !macroend
