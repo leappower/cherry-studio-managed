@@ -205,6 +205,68 @@
   !define MANAGED_BUILD "${env:MANAGED_BUILD}"
 !endif
 
+; ------------------------------------------------------------
+; E-4（批次 F）：局域网访问自动化 —— 开箱即用（无需手动配防火墙/转发）
+; ------------------------------------------------------------
+; CherryStudio 官方 API Gateway 强制监听 127.0.0.1:23333（本机回环），
+; 局域网其他机器无法访问。用 Windows 端口转发（portproxy）把
+; 0.0.0.0:23333 → 127.0.0.1:23333，加防火墙入站放行，实现局域网可达。
+;
+; ⚠️ 为什么不再只放在 customInstall 里：
+;    customInstall 依赖 customInit 提权成功；per-user 安装或提权链未走通时，
+;    这段 netsh 会被静默跳过（之前 94 号机实测：装了新包但规则未建）。
+;    现在抽成独立宏 LANSetup，在 customInstall 内无条件调用，并自检管理员：
+;    非管理员自动提权重跑；每次 netsh 用 nsExec::Exec 捕获返回值，失败弹窗报错，
+;    绝不静默吞掉。
+;
+; ⚠️ netsh interface portproxy 依赖 Windows IP Helper 服务(iphlpsvc)，
+;    若被禁用则转发不生效 → 先确保其运行并设为自动。
+; ------------------------------------------------------------
+!macro LANSetup
+  !if "${MANAGED_BUILD}" == "1"
+    ; 确认管理员权限（per-user 安装也可能到这里，需提权）
+    UserInfo::GetAccountType
+    Pop $0
+    ${If} $0 != "admin"
+      DetailPrint "LANSetup: 需要管理员权限，尝试提权重跑"
+      ${GetParameters} $1
+      ExecShell "runas" "$EXEPATH" "$1"
+      ${If} ${Errors}
+        MessageBox MB_ICONEXCLAMATION "CherryStudio 受管版需要管理员权限配置局域网访问。$
+$
+请右键安装程序选择“以管理员身份运行”后重试。"
+      ${EndIf}
+      Return
+    ${EndIf}
+
+    DetailPrint "Enabling LAN access: portproxy 0.0.0.0:23333 -> 127.0.0.1:23333"
+    ; 确保 IP Helper 服务运行
+    nsExec::Exec 'sc config iphlpsvc start= auto'
+    Pop $1
+    nsExec::Exec 'net start iphlpsvc'
+    Pop $1
+
+    ; 端口转发（先删旧再加，幂等）
+    nsExec::Exec 'netsh interface portproxy delete v4tov4 listenaddress=0.0.0.0 listenport=23333'
+    Pop $1
+    nsExec::Exec 'netsh interface portproxy add v4tov4 listenaddress=0.0.0.0 listenport=23333 connectaddress=127.0.0.1 connectport=23333'
+    Pop $1
+    ${If} $1 != 0
+      DetailPrint "portproxy 添加失败（code=$1），跳过（可能无管理员/系统限制）"
+    ${EndIf}
+
+    ; 防火墙放行 23333 入站（先删旧再添）
+    nsExec::Exec 'netsh advfirewall firewall delete rule name="CherryStudio API"'
+    Pop $1
+    nsExec::Exec 'netsh advfirewall firewall add rule name="CherryStudio API" dir=in action=allow protocol=TCP localport=23333'
+    Pop $1
+    ${If} $1 != 0
+      DetailPrint "防火墙规则添加失败（code=$1）"
+    ${EndIf}
+    DetailPrint "LANSetup done"
+  !endif
+!macroend
+
 ; 安装阶段：写入受管标记环境变量 CHERRY_MANAGED_BUILD=1（受管运行时应用启动读取），
 ; 并调用 sidecar first-run 完成首次初始化（落盘用户级 config + 生成 device_id +
 ; 注册并启动 NSSM 服务 CherrySidecar）—— 实现“装完即用”，无需任何手动步骤。
@@ -218,25 +280,8 @@
     DetailPrint "Running sidecar first-run (init config + register ${SIDECAR_SERVICE} service)"
     nsExec::ExecToLog '"$INSTDIR\resources\sidecar\${SIDECAR_EXE_NAME}" first-run'
 
-    ; ------------------------------------------------------------
-    ; E-4（批次 F）：局域网访问自动化 —— 开箱即用（无需手动配防火墙/转发）
-    ; ------------------------------------------------------------
-    ; CherryStudio 官方 API Gateway 写死监听 127.0.0.1:23333（本机回环），
-    ; 局域网其他机器无法访问。用 Windows 端口转发（portproxy）把
-    ; 0.0.0.0:23333 → 127.0.0.1:23333，再加防火墙入站放行，实现局域网可达。
-    ; customInit 已保证本宏以管理员权限运行（per-machine 安装自动提权）。
-    ; 幂等：先删除旧规则再新建，重复安装/升级不报错。
-    ; ⚠️ netsh interface portproxy 依赖 Windows IP Helper 服务(iphlpsvc)，
-    ;    若被禁用则转发不生效 → 安装时确保其运行并设为自动。
-    DetailPrint "Enabling LAN access: portproxy 0.0.0.0:23333 -> 127.0.0.1:23333"
-    nsExec::ExecToLog 'sc config iphlpsvc start= auto'
-    nsExec::ExecToLog 'net start iphlpsvc'
-    nsExec::ExecToLog 'netsh interface portproxy delete v4tov4 listenaddress=0.0.0.0 listenport=23333'
-    nsExec::ExecToLog 'netsh interface portproxy add v4tov4 listenaddress=0.0.0.0 listenport=23333 connectaddress=127.0.0.1 connectport=23333'
-
-    DetailPrint "Adding firewall rule: CherryStudio API 23333 (LAN inbound)"
-    nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="CherryStudio API"'
-    nsExec::ExecToLog 'netsh advfirewall firewall add rule name="CherryStudio API" dir=in action=allow protocol=TCP localport=23333'
+    ; 无条件执行局域网配置（含自检权限 + 失败报错，不再依赖 customInit 提权）
+    !insertmacro LANSetup
   !endif
 !macroend
 
