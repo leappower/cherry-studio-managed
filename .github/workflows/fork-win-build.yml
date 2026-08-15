@@ -155,19 +155,19 @@ jobs:
           fi
           ls -la "$DEST/rg.exe"
 
-      - name: Pre-place nssm.exe (sidecar service manager)
+      - name: Download nssm.exe and set NSSM_EXE_PATH
         # E-4（开箱即用）：sidecar 用 NSSM 注册为 Windows 服务 CherrySidecar。
-        # sidecar.py _find_nssm() 通过 sys.executable.parent 定位 nssm.exe，
-        # 而 onefile 解压后 sidecar.exe 在 $INSTDIR\resources\sidecar\，
-        # 故把 nssm.exe 内置到 resources/sidecar/nssm.exe 即可被找到。
-        # NSIS 卸载脚本也用 $INSTDIR\resources\sidecar\nssm.exe 停/删服务，
-        # 位置必须与 sidecar.exe 同级。nssm.cc 偶发不稳，先试官方，失败用 GitHub 镜像。
+        # 下载 nssm.exe 并设置 NSSM_EXE_PATH，由 electron-builder 的
+        # extraResources（to: sidecar/nssm.exe）注入到 $INSTDIR\resources\sidecar\nssm.exe。
+        # sidecar.py _find_nssm() 通过 sys.executable.parent 定位 nssm.exe，必须与 sidecar.exe 同级。
+        # ⚠️ 不要直接预置到仓库 resources/sidecar/：那会被 electron-builder 当 app 内部资源
+        #    吸进 app.asar.unpacked/resources/sidecar/（实测），_find_nssm 找不到 → 服务注册失败。
+        #    必须走 extraResources 机制注入 resources/sidecar/。nssm.cc 偶发不稳，先试官方，失败用 GitHub 镜像。
         shell: bash
         run: |
           set -euxo pipefail
-          DEST="resources/sidecar"
-          mkdir -p "$DEST"
-          if [ ! -f "$DEST/nssm.exe" ]; then
+          mkdir -p nssm_dl
+          if [ ! -f nssm_dl/nssm.exe ]; then
             # 官方 nssm 2.24（zip 内结构 nssm-2.24/win64/nssm.exe）
             for i in 1 2 3 4 5; do
               echo "尝试 $i: 下载 nssm 官方包"
@@ -188,11 +188,13 @@ jobs:
             # 兼容两种 zip 结构：win64/ 或 nssm-2.24/win64/
             NSSM_EXE=$(find nssm_extract -name "nssm.exe" -path "*win64*" | head -1)
             test -n "$NSSM_EXE"
-            cp "$NSSM_EXE" "$DEST/nssm.exe"
+            cp "$NSSM_EXE" nssm_dl/nssm.exe
             rm -rf nssm.zip nssm_extract
           fi
-          ls -la "$DEST/nssm.exe"
-          file "$DEST/nssm.exe" 2>/dev/null || true
+          NSSM_PATH=$(cd nssm_dl && pwd)/nssm.exe
+          echo "NSSM_EXE_PATH=$NSSM_PATH" >> "$GITHUB_ENV"
+          ls -la "$NSSM_PATH"
+          file "$NSSM_PATH" 2>/dev/null || true
 
       - name: Build Windows x64
         shell: bash
@@ -211,16 +213,24 @@ jobs:
           import os
           p = 'electron-builder.yml'
           s = open(p, encoding='utf-8').read()
+          # sidecar.exe
           path = os.environ['SIDECAR_EXE_PATH']
           old = 'from: "${env.SIDECAR_EXE_PATH}"'
           new = "from: '%s'" % path.replace("'", "''")
           assert old in s, 'sidecar from line not found in electron-builder.yml'
           s = s.replace(old, new)
-          open(p, 'w', encoding='utf-8').write(s)
           print('replaced sidecar from path ->', new)
+          # nssm.exe（与 sidecar 同机制，注入 resources/sidecar/nssm.exe）
+          npath = os.environ['NSSM_EXE_PATH']
+          nold = 'from: "${env.NSSM_EXE_PATH}"'
+          nnew = "from: '%s'" % npath.replace("'", "''")
+          assert nold in s, 'nssm from line not found in electron-builder.yml'
+          s = s.replace(nold, nnew)
+          print('replaced nssm from path ->', nnew)
+          open(p, 'w', encoding='utf-8').write(s)
           PY
           # 确认替换生效
-          grep -n "from:" electron-builder.yml | grep -i sidecar || true
+          grep -n "from:" electron-builder.yml | grep -iE "sidecar|nssm" || true
           pnpm build:win:x64
         env:
           # 签名处理（见文件头说明）：不设 WIN_SIGN / CSC_* → 临时禁用签名，出包不阻塞。
@@ -228,6 +238,8 @@ jobs:
           # E-1：注入 sidecar.exe 绝对路径，electron-builder 读 ${env.SIDECAR_EXE_PATH}
           # 经 electron-builder.yml extraResources → resources/sidecar（未注入时该资源跳过）。
           SIDECAR_EXE_PATH: ${{ env.SIDECAR_EXE_PATH }}
+          # E-4：注入 nssm.exe 绝对路径 → resources/sidecar/nssm.exe（与 sidecar.exe 同级）。
+          NSSM_EXE_PATH: ${{ env.NSSM_EXE_PATH }}
           MANAGED_BUILD: '1'
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NODE_OPTIONS: --max-old-space-size=8192

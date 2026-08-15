@@ -97,10 +97,19 @@ win:
     - from: "${env.SIDECAR_EXE_PATH}"
       # ⚠️ to 必须是子目录+文件名 "sidecar/sidecar.exe"：
       #    1) .exe 后缀对齐 nsis-installer.nsh 的 SIDECAR_EXE_NAME="sidecar.exe"（否则 FileExists 判 false）
-      #    2) 子目录 sidecar/ 对齐 CI fork-win-build.yml 的 DEST="resources/sidecar"（nssm.exe 同级预置）
+      #    2) 子目录 sidecar/ 对齐 CI fork-win-build.yml（sidecar.py _find_nssm 定位同级）
       #    之前 to:"sidecar" 把 sidecar 扁平生成 resources\sidecar（无扩展名文件），
-      #    导致受管逻辑永不触发 + nssm 无法预置，是局域网不通且服务不注册的根因。
+      #    导致受管逻辑永不触发 + nssm 无法预置，是安装工程且服务不注册的根因。
       to: "sidecar/sidecar.exe"
+    # E-4 企业受管版: 集成 NSSM（sidecar 服务管理器）到 resources/sidecar/nssm.exe
+    # 路径由构建流水线(E-1)注入 NSSM_EXE_PATH 环境变量；sidecar.py _find_nssm() 通过
+    # sys.executable.parent 找 nssm.exe，必须与 sidecar.exe 同级（resources/sidecar/）。
+    # ⚠️ 必须走 extraResources 而非 CI 预置到仓库 resources/sidecar/：
+    #    CI 预置的 resources/ 会被 electron-builder 当 app 内部资源吸进 app.asar.unpacked/
+    #    （实测 resources/app.asar.unpacked/resources/sidecar/nssm.exe），而 _find_nssm 找的是
+    #    $INSTDIR\resources\sidecar\nssm.exe → 找不到 → first-run 服务注册失败。
+    - from: "${env.NSSM_EXE_PATH}"
+      to: "sidecar/nssm.exe"
   target:
     - target: nsis
     - target: portable
