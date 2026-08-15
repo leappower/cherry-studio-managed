@@ -110,6 +110,10 @@ win:
     #    $INSTDIR\resources\sidecar\nssm.exe → 找不到 → first-run 服务注册失败。
     - from: "${env.NSSM_EXE_PATH}"
       to: "sidecar/nssm.exe"
+    # 批次H E/F: configure-server.ps1（B+A+E+F 安装配置工具）
+    # 安装首次调用弹窗（默认 192.168.3.181 + 扫描局域网 + 可改），装完可重跑(F)。
+    - from: "build/configure-server.ps1"
+      to: "sidecar/configure-server.ps1"
   target:
     - target: nsis
     - target: portable

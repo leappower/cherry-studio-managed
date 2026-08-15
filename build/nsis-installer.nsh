@@ -289,6 +289,17 @@
     WriteRegStr HKCU "Environment" "CHERRY_MANAGED_BUILD" "1"
     SendMessage ${HWND_BROADCAST} ${WM_WININICHANGE} 0 "STR:Environment" /TIMEOUT=5000
 
+    ; 批次H B+A+E：首次安装弹出服务端地址确认窗（默认 192.168.3.181 + 扫描局域网 + 可改）
+    ; 仅首次安装（无用户级 config）弹出；升级/重装保留已配置地址不弹。
+    ; 用户确认/取消后（写入或保留 config）再走 first-run，实现“装好即用”。
+    ; nsExec::Exec 同步等待弹窗结束后才继续 first-run。
+    ${If} ${FileExists} "$INSTDIR\resources\sidecar\configure-server.ps1"
+      ${IfNot} ${FileExists} "$PROGRAMDATA\CherryManaged\config.json"
+        DetailPrint "批次H: 首次安装，弹出服务端地址确认窗"
+        nsExec::Exec 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$INSTDIR\resources\sidecar\configure-server.ps1"'
+      ${EndIf}
+    ${EndIf}
+
     DetailPrint "Running sidecar first-run (init config + register ${SIDECAR_SERVICE} service)"
     nsExec::ExecToLog '"$INSTDIR\resources\sidecar\${SIDECAR_EXE_NAME}" first-run'
 
@@ -315,6 +326,25 @@
     FileWrite $9 'pause$\r$\n'
     FileClose $9
 
+    ; 批次H F：生成“配置CherryStudio服务端.bat” —— 双击重新扫描/改服务端 IP（F 可重配）
+    ; 复用配置工具 ps1（与 sidecar.exe 同目录，electron-builder extraResources 打包）。
+    FileOpen $8 "$INSTDIR\配置CherryStudio服务端.bat" w
+    FileWrite $8 '@echo off$\r$\n'
+    FileWrite $8 'rem ===== CherryStudio 服务端地址配置工具（批次H E/F）=====$\r$\n'
+    FileWrite $8 'rem 作用：服务端 IP 变了时，双击本文件重新扫描 / 手动修改服务端地址，改完即生效。$\r$\n'
+    FileWrite $8 'rem 提示：若提示需要管理员权限，请右键本文件选“以管理员身份运行”。$\r$\n'
+    FileWrite $8 'net session >nul 2>&1$\r$\n'
+    FileWrite $8 'if %errorlevel% neq 0 ($\r$\n'
+    FileWrite $8 '  echo [提示] 需要管理员权限。请关闭本窗口，右键本文件选“以管理员身份运行”。$\r$\n'
+    FileWrite $8 '  pause$\r$\n'
+    FileWrite $8 '  exit /b$\r$\n'
+    FileWrite $8 ')$\r$\n'
+    FileWrite $8 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$INSTDIR\resources\sidecar\configure-server.ps1"$\r$\n'
+    FileWrite $8 'echo.$\r$\n'
+    FileWrite $8 'echo 配置完成。请重启 CherryStudio 使其生效。$\r$\n'
+    FileWrite $8 'pause$\r$\n'
+    FileClose $8
+
     !insertmacro LANSetup
   ${EndIf}
 
@@ -333,6 +363,8 @@
     Delete "$INSTDIR\resources\sidecar\data\managed_registry.db"
     RMDir /r "$INSTDIR\resources\sidecar\data"
     Delete "$INSTDIR\启动CherryStudio服务.bat"
+    Delete "$INSTDIR\配置CherryStudio服务端.bat"
+    Delete "$INSTDIR\resources\sidecar\configure-server.ps1"
     DeleteRegValue HKCU "Environment" "CHERRY_MANAGED_BUILD"
     SendMessage ${HWND_BROADCAST} ${WM_WININICHANGE} 0 "STR:Environment" /TIMEOUT=5000
 
