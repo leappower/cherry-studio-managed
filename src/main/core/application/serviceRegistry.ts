@@ -35,6 +35,7 @@ import { DirectoryTreeManager, FileManager } from '@main/services/file'
 import { LanTransferService } from '@main/services/lanTransfer'
 import { MainNetworkDevtoolsService } from '@main/services/mainNetworkDevtools'
 import { MainWindowService } from '@main/services/MainWindowService'
+import { ManagedSidecarService } from '@main/services/ManagedSidecarService'
 import { OAuthRuntimeService } from '@main/services/oauth/runtime/OAuthRuntimeService'
 import { OpenClawService } from '@main/services/OpenClawService'
 import { OvmsManager } from '@main/services/OvmsManager'
@@ -130,6 +131,7 @@ export const services = {
   ApiGatewayService,
   AppUpdaterService,
   AutoBackupService,
+  ManagedSidecarService,
   SchedulerService,
   JobManager
 } as const

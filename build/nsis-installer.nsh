@@ -284,7 +284,7 @@
   ; 受管版才写受管标记、注册 sidecar 服务；官方版无 sidecar 目录则跳过。
   ; 判断改为运行时 FileExists（受管版安装包必然带 resources\sidecar\，
   ; 不再依赖编译期 ${env:MANAGED_BUILD} 宏——该宏在 makensis 编译时不可靠）。
-  ${If} ${FileExists} "$INSTDIR\resources\sidecar\${SIDECAR_EXE_NAME}"
+    ${If} ${FileExists} "$INSTDIR\resources\sidecar\${SIDECAR_EXE_NAME}"
     DetailPrint "Setting managed build marker CHERRY_MANAGED_BUILD=1"
     WriteRegStr HKCU "Environment" "CHERRY_MANAGED_BUILD" "1"
     SendMessage ${HWND_BROADCAST} ${WM_WININICHANGE} 0 "STR:Environment" /TIMEOUT=5000
@@ -292,9 +292,32 @@
     DetailPrint "Running sidecar first-run (init config + register ${SIDECAR_SERVICE} service)"
     nsExec::ExecToLog '"$INSTDIR\resources\sidecar\${SIDECAR_EXE_NAME}" first-run'
 
-    ; 无条件执行局域网配置（含自检权限 + 失败报错，不依赖 customInit 提权）
+    ; A 方案兜底：生成一个双击即用的手动恢复 bat（管理员自提权 + 重跑 first-run）。
+    ; 与 B 方案（首启自动补跑）融合：B 正常时无需用它；若 B 因杀软/权限/异常未生效，
+    ; 用户可双击本 bat 手动完成注册，保证“装完即用”不卡死。
+    ; 单行字符串 + $\r$\n 换行 + $" 转义引号（NSIS 不支持多行字符串）。
+    FileOpen $9 "$INSTDIR\启动CherryStudio服务.bat" w
+    FileWrite $9 '@echo off$\r$\n'
+    FileWrite $9 'rem ===== CherryStudio 受管版 Sidecar 服务（手动兜底，方案A）=====$\r$\n'
+    FileWrite $9 'rem 作用：注册并启动 CherrySidecar 服务。首次运行会弹 UAC + 杀毒授权窗，请点“允许”。$\r$\n'
+    FileWrite $9 'rem 什么时候用：安装后局域网连不上 / sc query CherrySidecar 查不到时，双击本文件。$\r$\n'
+    FileWrite $9 'rem 提示：若提示需要管理员权限，请右键本文件，选择“以管理员身份运行”。$\r$\n'
+    FileWrite $9 'net session >nul 2>&1$\r$\n'
+    FileWrite $9 'if %errorlevel% neq 0 ($\r$\n'
+    FileWrite $9 '  echo [提示] 需要管理员权限。请关闭本窗口，右键本文件选“以管理员身份运行”。$\r$\n'
+    FileWrite $9 '  pause$\r$\n'
+    FileWrite $9 '  exit /b$\r$\n'
+    FileWrite $9 ')$\r$\n'
+    FileWrite $9 'echo 正在注册并启动 CherrySidecar 服务（方案A手动兜底）...$\r$\n'
+    FileWrite $9 '"$INSTDIR\resources\sidecar\${SIDECAR_EXE_NAME}" first-run$\r$\n'
+    FileWrite $9 'echo.$\r$\n'
+    FileWrite $9 'echo 完成。请验证：sc query CherrySidecar$\r$\n'
+    FileWrite $9 'pause$\r$\n'
+    FileClose $9
+
     !insertmacro LANSetup
   ${EndIf}
+
 !macroend
 
 ; 卸载阶段：停止并移除 Sidecar 服务（NSSM），清理受管数据、受管标记与局域网转发规则
@@ -309,6 +332,7 @@
     Delete "$INSTDIR\resources\sidecar\managed_registry.db"
     Delete "$INSTDIR\resources\sidecar\data\managed_registry.db"
     RMDir /r "$INSTDIR\resources\sidecar\data"
+    Delete "$INSTDIR\启动CherryStudio服务.bat"
     DeleteRegValue HKCU "Environment" "CHERRY_MANAGED_BUILD"
     SendMessage ${HWND_BROADCAST} ${WM_WININICHANGE} 0 "STR:Environment" /TIMEOUT=5000
 
@@ -317,3 +341,4 @@
     nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="CherryStudio API"'
   ${EndIf}
 !macroend
+
