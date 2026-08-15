@@ -294,7 +294,7 @@
     ; 用户确认/取消后（写入或保留 config）再走 first-run，实现“装好即用”。
     ; nsExec::Exec 同步等待弹窗结束后才继续 first-run。
     ${If} ${FileExists} "$INSTDIR\resources\sidecar\configure-server.ps1"
-      ${IfNot} ${FileExists} "$PROGRAMDATA\CherryManaged\config.json"
+      ${IfNot} ${FileExists} "$%PROGRAMDATA%\CherryManaged\config.json"
         DetailPrint "批次H: 首次安装，弹出服务端地址确认窗"
         nsExec::Exec 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$INSTDIR\resources\sidecar\configure-server.ps1"'
       ${EndIf}
