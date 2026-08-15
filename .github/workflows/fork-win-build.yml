@@ -277,10 +277,12 @@ jobs:
           INSTALLER=$(find dist -maxdepth 1 -name "*-setup.exe" | head -1)
           echo "上传安装包: $INSTALLER ($(du -h "$INSTALLER" | cut -f1))"
           TAG="e1-build-${GITHUB_SHA::8}"
-          # 创建 Release 并上传资产（旧版 gh 不支持 --clobber，故不用；
-          # 若 tag 已存在则改为 upload 追加资产）
+          # 创建 Release 并上传资产。
+          # ⚠️ 同 tag 重新构建（workflow_dispatch 同 commit）时，同名 asset 已存在，
+          #    裸 `gh release upload` 会因资产名冲突失败（exit 1）。
+          #    --clobber 允许覆盖同名资产，保证同 tag 重跑能更新安装包。
           if gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
-            gh release upload "$TAG" "$INSTALLER" --repo "${{ github.repository }}"
+            gh release upload "$TAG" "$INSTALLER" --repo "${{ github.repository }}" --clobber
           else
             gh release create "$TAG" "$INSTALLER" \
               --repo "${{ github.repository }}" \
