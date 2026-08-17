@@ -86,6 +86,19 @@ function Set-ServerAddress {
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "CherryStudio 受管版 - 配置服务端地址"
 $form.Size = New-Object System.Drawing.Size(520, 340)
+# ---------- -Auto 模式：已有有效配置则跳过（避免升级/重装重复弹窗）----------
+# NSIS 安装时以 -Auto 调本工具：若 config.json 已存在且含有效 server 地址，
+# 直接退出不弹窗（保留已有配置）；仅当未配置（首次安装）才弹确认窗。
+if ($Auto) {
+    $cf = Join-Path $env:ProgramData "CherryManaged\config.json"
+    if (Test-Path $cf) {
+        $u = Get-CurrentServerUrl
+        if ($u -match "^(ws://|https?://|[^/]+)") {
+            exit 0
+        }
+    }
+}
+
 $form.StartPosition = "CenterScreen"
 $form.FormBorderStyle = "FixedDialog"
 $form.MaximizeBox = $false

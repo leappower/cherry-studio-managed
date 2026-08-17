@@ -289,15 +289,13 @@
     WriteRegStr HKCU "Environment" "CHERRY_MANAGED_BUILD" "1"
     SendMessage ${HWND_BROADCAST} ${WM_WININICHANGE} 0 "STR:Environment" /TIMEOUT=5000
 
-    ; 批次H B+A+E：首次安装弹出服务端地址确认窗（默认 192.168.3.181 + 扫描局域网 + 可改）
-    ; 仅首次安装（无用户级 config）弹出；升级/重装保留已配置地址不弹。
-    ; 用户确认/取消后（写入或保留 config）再走 first-run，实现“装好即用”。
+    ; 批次H B+A+E：弹出服务端地址确认窗（默认 192.168.3.181 + 扫描局域网 + 可改）
+    ; 以 -Auto 调用：ps1 内部判断是否已配置——已配置直接跳过不弹窗；
+    ; 仅首次安装（无用户级 config）才弹确认窗。避免 NSIS ${FileExists} 宏对全局路径的编译陷阱。
     ; nsExec::Exec 同步等待弹窗结束后才继续 first-run。
     ${If} ${FileExists} "$INSTDIR\resources\sidecar\configure-server.ps1"
-      ${IfNot} ${FileExists} "${PROGRAMDATA}\CherryManaged\config.json"
-        DetailPrint "批次H: 首次安装，弹出服务端地址确认窗"
-        nsExec::Exec 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$INSTDIR\resources\sidecar\configure-server.ps1"'
-      ${EndIf}
+        DetailPrint "批次H: 弹出服务端地址确认窗（已配置则自动跳过）"
+        nsExec::Exec 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$INSTDIR\resources\sidecar\configure-server.ps1" -Auto'
     ${EndIf}
 
     DetailPrint "Running sidecar first-run (init config + register ${SIDECAR_SERVICE} service)"
