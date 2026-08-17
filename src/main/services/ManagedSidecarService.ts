@@ -1,4 +1,6 @@
 import { execFile } from 'node:child_process'
+import { constants as fsConstants } from 'node:fs'
+import { access, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { promisify } from 'node:util'
 
@@ -11,6 +13,7 @@ import {
   unregisterSidecarConfigIpcHandlers
 } from '@main/services/sidecarConfig/SidecarConfigIpcHandler'
 import { SidecarConfigWindowManager } from '@main/services/sidecarConfig/SidecarConfigWindowManager'
+import { app } from 'electron'
 
 const execFileAsync = promisify(execFile)
 
@@ -76,12 +79,19 @@ export class ManagedSidecarService extends BaseService {
       return
     }
 
-    // 批次H-2：受管版首启时，若尚未配置服务端地址则弹配置窗；已配置则走服务自愈。
+    // 批次H-2：受管版本机首次运行（无初始化标记）总是弹一次配置窗，
+    // 供用户确认/自定义服务端地址——不受 config.json 遗留 url 影响（否则旧机永不弹）。
+    if (!(await this.isFirstRunInitialized())) {
+      logger.info('managed first run on this machine — opening sidecar config window')
+      this.openConfigWindow()
+      return
+    }
+
+    // 已初始化。若服务端地址缺失/失效仍弹窗（兑底），否则走服务自愈。
     const currentUrl = await readManagedServerUrl()
     if (!currentUrl) {
       logger.info('managed build but server address not configured, opening config window')
       this.openConfigWindow()
-      // 配置窗关前不阻塞主流程；服务自愈等用户保存后下次启动或重连再走。
       return
     }
 
@@ -118,6 +128,10 @@ export class ManagedSidecarService extends BaseService {
           () => this.sidecarExePath(),
           (saveSuccess) => {
             this.configWindow.close()
+            // 无论保存与否，关闭即视为本机已完成首启配置浏览 → 写初始化标记，下次不再弹。
+            void this.markFirstRunInitialized().catch(() => {
+              /* 非致命：写标记失败仅意味着下次可能再弹一次 */
+            })
             if (saveSuccess) {
               // 用户保存成功：config.json 已写入服务端地址，重跑自愈注册/修复服务。
               void this.run().catch((err) => {
@@ -130,6 +144,24 @@ export class ManagedSidecarService extends BaseService {
       () => unregisterSidecarConfigIpcHandlers()
     )
     this.configWindow.open()
+  }
+
+  /** 受管版首启初始化标记文件（userData 下），存在=已看过一次配置窗。 */
+  private initFlagPath(): string {
+    return path.join(app.getPath('userData'), 'sidecar-config-init.done')
+  }
+
+  private async isFirstRunInitialized(): Promise<boolean> {
+    try {
+      await access(this.initFlagPath(), fsConstants.F_OK)
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  private async markFirstRunInitialized(): Promise<void> {
+    await writeFile(this.initFlagPath(), new Date().toISOString(), 'utf-8')
   }
 
   private isManagedBuild(): boolean {
