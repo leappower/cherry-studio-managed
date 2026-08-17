@@ -362,6 +362,12 @@
     DeleteRegValue HKCU "Environment" "CHERRY_MANAGED_BUILD"
     SendMessage ${HWND_BROADCAST} ${WM_WININICHANGE} 0 "STR:Environment" /TIMEOUT=5000
 
+    ; 卸载时删除用户级配置目录 %APPDATA%\CherryManaged
+    ; （set-server/首启配置所在，自 2026-08-17 起改存这里而非 ProgramData）
+    ; 删掉后重装必重新触发服务端地址选择，满足「重装必重选」语义。
+    DetailPrint "Removing user config dir %APPDATA%\\CherryManaged"
+    RMDir /r "$APPDATA\CherryManaged"
+
     ; 卸载时清理防火墙放行规则（不留脏配置）。portproxy 不再创建，无需处理。
     DetailPrint "Cleaning up firewall rule"
     nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="CherryStudio API"'
