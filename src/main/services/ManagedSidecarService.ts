@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process'
 import { constants as fsConstants } from 'node:fs'
+import * as fs from 'node:fs'
 import { access, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { promisify } from 'node:util'
@@ -164,9 +165,27 @@ export class ManagedSidecarService extends BaseService {
     await writeFile(this.initFlagPath(), new Date().toISOString(), 'utf-8')
   }
 
+  /**
+   * 受管版判定 = 安装目录自带受管 sidecar 产物（resources\sidecar\sidecar.exe）。
+   *
+   * 不再读 process.env.CHERRY_MANAGED_BUILD：安装器把标记写进注册表 HKCU\Environment，
+   * 但应用启动时继承的进程环境里没有该值 → 此前受管版永远判定失败（不弹窗/不自愈/不监听）。
+   * 改为检测受管产物文件是否存在：受管版安装包必然带 resources\sidecar\sidecar.exe
+   * （官方版无 sidecar 目录），判定与 sidecarExePath() 完全一致，零权限、零编码风险。
+   */
   private isManagedBuild(): boolean {
-    const flag = process.env.CHERRY_MANAGED_BUILD
-    return flag === '1' || flag === 'true' || flag === 'TRUE'
+    // env 仍保留为快速开关（测试/旁路），但主判定改为产物文件存在。
+    const envFlag = process.env.CHERRY_MANAGED_BUILD
+    if (envFlag === '1' || envFlag === 'true' || envFlag === 'TRUE') {
+      return true
+    }
+    try {
+      // electron-builder 打包后 process.resourcesPath = $INSTDIR\resources
+      const sidecarExe = path.join(process.resourcesPath, 'sidecar', SIDECAR_EXE_NAME)
+      return fs.existsSync(sidecarExe)
+    } catch {
+      return false
+    }
   }
 
   /**
