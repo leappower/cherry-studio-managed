@@ -154,7 +154,7 @@ export enum IpcChannel {
   LanTransfer_Disconnect = 'lan-transfer:disconnect',
   LanTransfer_ClientEvent = 'lan-transfer:client-event',
   LanTransfer_SendFile = 'lan-transfer:send-file',
-  LanTransfer_CancelTransfer = 'lan-transfer:cancel-transfer'
+  LanTransfer_CancelTransfer = 'lan-transfer:cancel-transfer',
 
   // ──────────────────────────────────────────────────────────────
   // TODO(v2): the following IPC channels are still referenced via
@@ -167,4 +167,13 @@ export enum IpcChannel {
   //   - 'file-preprocess-finished'  (PreprocessingService + KnowledgeService)
   //   - 'file-preprocess-progress'  (BasePreprocessProvider)
   // ──────────────────────────────────────────────────────────────
+
+  // ══════════════════════════════════════════════════════════════
+  // 批次H-2：Sidecar 服务端地址配置窗（受管版首启弹窗）
+  // renderer 独立窗口 ↔ main（调用 sidecar.exe discover / set-server）
+  // ══════════════════════════════════════════════════════════════
+  SidecarConfig_GetServerUrl = 'sidecar-config:get-server-url',
+  SidecarConfig_ScanLan = 'sidecar-config:scan-lan',
+  SidecarConfig_SetServer = 'sidecar-config:set-server',
+  SidecarConfig_Close = 'sidecar-config:close'
 }

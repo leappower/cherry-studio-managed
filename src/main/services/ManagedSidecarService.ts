@@ -5,6 +5,12 @@ import { promisify } from 'node:util'
 import { loggerService } from '@logger'
 import { BaseService, DependsOn, Injectable, Phase, ServicePhase } from '@main/core/lifecycle'
 import { isWin } from '@main/core/platform'
+import {
+  readManagedServerUrl,
+  registerSidecarConfigIpcHandlers,
+  unregisterSidecarConfigIpcHandlers
+} from '@main/services/sidecarConfig/SidecarConfigIpcHandler'
+import { SidecarConfigWindowManager } from '@main/services/sidecarConfig/SidecarConfigWindowManager'
 
 const execFileAsync = promisify(execFile)
 
@@ -45,12 +51,14 @@ const SIDECAR_EXE_NAME = 'sidecar.exe'
 @ServicePhase(Phase.WhenReady)
 @DependsOn(['AppUpdaterService'])
 export class ManagedSidecarService extends BaseService {
+  /** 受管版首次运行的服务端地址配置窗（批次H-2）。 */
+  private readonly configWindow = new SidecarConfigWindowManager()
+
   protected onReady(): void {
     if (!isWin) {
       return
     }
-    // Fire-and-forget so the auto-heal never gates boot. The sidecar check and
-    // (if needed) first-run run entirely in the background.
+    // Fire-and-forget so the check never gates boot.
     void this.run().catch((err) => {
       logger.warn('managed sidecar auto-heal failed (non-fatal)', err as Error)
     })
@@ -65,6 +73,15 @@ export class ManagedSidecarService extends BaseService {
     const sidecarExe = this.sidecarExePath()
     if (!sidecarExe) {
       logger.warn('managed build but sidecar.exe not found, skip auto-heal')
+      return
+    }
+
+    // 批次H-2：受管版首启时，若尚未配置服务端地址则弹配置窗；已配置则走服务自愈。
+    const currentUrl = await readManagedServerUrl()
+    if (!currentUrl) {
+      logger.info('managed build but server address not configured, opening config window')
+      this.openConfigWindow()
+      // 配置窗关前不阻塞主流程；服务自愈等用户保存后下次启动或重连再走。
       return
     }
 
@@ -90,6 +107,29 @@ export class ManagedSidecarService extends BaseService {
       // (manual `sidecar.exe first-run`). Never crash or block the app.
       logger.error('sidecar first-run (auto-heal) failed; run `sidecar.exe first-run` manually (plan A)', err as Error)
     }
+  }
+
+  /** 打开服务端地址配置窗（注册 IPC handler，幂等；保存并关闭后重跑服务自愈）。 */
+  private openConfigWindow(): void {
+    this.configWindow.registerIpc(
+      // 注册：读地址/扫描/写入 + close（存入 sidecar config，关闭配置窗后重跑服务自愈）
+      () =>
+        registerSidecarConfigIpcHandlers(
+          () => this.sidecarExePath(),
+          (saveSuccess) => {
+            this.configWindow.close()
+            if (saveSuccess) {
+              // 用户保存成功：config.json 已写入服务端地址，重跑自愈注册/修复服务。
+              void this.run().catch((err) => {
+                logger.warn('post-config sidecar auto-heal failed (non-fatal)', err as Error)
+              })
+            }
+          }
+        ),
+      // 注销
+      () => unregisterSidecarConfigIpcHandlers()
+    )
+    this.configWindow.open()
   }
 
   private isManagedBuild(): boolean {

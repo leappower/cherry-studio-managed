@@ -289,14 +289,10 @@
     WriteRegStr HKCU "Environment" "CHERRY_MANAGED_BUILD" "1"
     SendMessage ${HWND_BROADCAST} ${WM_WININICHANGE} 0 "STR:Environment" /TIMEOUT=5000
 
-    ; 批次H B+A+E：弹出服务端地址确认窗（默认 192.168.3.181 + 扫描局域网 + 可改）
-    ; 以 -Auto 调用：ps1 内部判断是否已配置——已配置直接跳过不弹窗；
-    ; 仅首次安装（无用户级 config）才弹确认窗。避免 NSIS ${FileExists} 宏对全局路径的编译陷阱。
-    ; nsExec::Exec 同步等待弹窗结束后才继续 first-run。
-    ${If} ${FileExists} "$INSTDIR\resources\sidecar\configure-server.ps1"
-        DetailPrint "批次H: 弹出服务端地址确认窗（已配置则自动跳过）"
-        nsExec::Exec 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$INSTDIR\resources\sidecar\configure-server.ps1" -Auto'
-    ${EndIf}
+    ; 批次H-2：服务端地址配置弹窗已迁移到 CherryStudio 应用首次运行时
+    ; (ManagedSidecarService)。安装阶段不再弹窗——NSIS 安装器上下文弹
+    ; PowerShell WinForms 不稳定，且首次运行时可获得更准确的"是否已配置"
+    ; 判断。configure-server.ps1 保留为 F 配置工具（装完可手动重跑）。
 
     DetailPrint "Running sidecar first-run (init config + register ${SIDECAR_SERVICE} service)"
     nsExec::ExecToLog '"$INSTDIR\resources\sidecar\${SIDECAR_EXE_NAME}" first-run'
