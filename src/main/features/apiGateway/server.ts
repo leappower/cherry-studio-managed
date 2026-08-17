@@ -1,3 +1,6 @@
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
+
 import { application } from '@application'
 import { loggerService } from '@logger'
 import type { Server } from 'elysia/universal/server'
@@ -42,10 +45,15 @@ export class ApiGateway {
     const port = preferenceService.get('feature.api_gateway.port')
     const configuredHost = preferenceService.get('feature.api_gateway.host')
     // Managed (Fork) builds listen on all interfaces so the API is reachable from
-    // the LAN out-of-the-box. The NSIS installer sets CHERRY_MANAGED_BUILD=1; the
-    // official build keeps the loopback-only default (never exposed to the LAN).
+    // the LAN out-of-the-box. We detect the managed build by the presence of the
+    // packaged sidecar product at resources\sidecar\sidecar.exe (same rule as
+    // ManagedSidecarService.isManagedBuild). NOTE: do NOT read
+    // process.env.CHERRY_MANAGED_BUILD here — the NSIS installer only writes that
+    // marker to the HKCU registry, which is NOT inherited into the running
+    // process env, so it would silently keep the LAN override off on every
+    // machine (the env-inheritance bug fixed for isManagedBuild applies here too).
     // Only override when the user has not explicitly pinned a non-loopback host.
-    const isManaged = process.env.CHERRY_MANAGED_BUILD === '1'
+    const isManaged = existsSync(join(process.resourcesPath, 'sidecar', 'sidecar.exe'))
     const host =
       isManaged && (configuredHost === '127.0.0.1' || configuredHost === 'localhost') ? '0.0.0.0' : configuredHost
 
