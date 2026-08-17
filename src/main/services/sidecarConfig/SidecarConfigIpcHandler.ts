@@ -13,13 +13,19 @@ const logger = loggerService.withContext('SidecarConfigIpcHandler')
 
 /**
  * 读取受管版 sidecar 用户级配置中的服务端地址。
- * 路径对齐 sidecar.py `_user_config_dir()`：Windows 用 %PROGRAMDATA%\CherryManaged\config.json。
+ * 路径对齐 sidecar.py `_user_config_dir()`：Windows 用 %APPDATA%\CherryManaged\config.json。
  * 返回 `server.url`（形如 ws://IP:PORT/ws）或空串（未配置/读取失败）。
  */
 export async function readManagedServerUrl(): Promise<string> {
   try {
-    const programData = process.env.PROGRAMDATA ?? join(process.env.SystemDrive ?? 'C:', 'ProgramData')
-    const cfgPath = join(programData, 'CherryManaged', 'config.json')
+    // Must match where sidecar cmd_set_server writes the user config.
+    // Since 2026-08-17 the sidecar writes to %APPDATA%\CherryManaged (not
+    // %PROGRAMDATA%) to fix the write-permission bug; reading here from
+    // ProgramData instead produced a read/write path mismatch that kept
+    // re-opening the config dialog (save wrote APPDATA, read looked at
+    // ProgramData -> empty -> dialog loop).
+    const appData = process.env.APPDATA ?? join(process.env.USERPROFILE ?? 'C:', 'AppData', 'Roaming')
+    const cfgPath = join(appData, 'CherryManaged', 'config.json')
     const raw = await readFile(cfgPath, 'utf-8')
     const cfg = JSON.parse(raw) as { server?: { url?: string } }
     return cfg.server?.url ?? ''

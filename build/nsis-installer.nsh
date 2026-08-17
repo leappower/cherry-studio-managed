@@ -365,7 +365,11 @@
     ; 卸载时删除用户级配置目录 %APPDATA%\CherryManaged
     ; （set-server/首启配置所在，自 2026-08-17 起改存这里而非 ProgramData）
     ; 删掉后重装必重新触发服务端地址选择，满足「重装必重选」语义。
+    ; 先强制结束 sidecar 进程并短暂等待（服务可能已停但进程句柄未释放），
+    ; 避免 RMDir 因文件被占用而静默失败。
     DetailPrint "Removing user config dir %APPDATA%\\CherryManaged"
+    nsExec::ExecToLog 'taskkill /F /IM sidecar.exe'
+    nsExec::ExecToLog 'timeout /t 2 /nobreak >nul'
     RMDir /r "$APPDATA\CherryManaged"
 
     ; 卸载时清理防火墙放行规则（不留脏配置）。portproxy 不再创建，无需处理。
