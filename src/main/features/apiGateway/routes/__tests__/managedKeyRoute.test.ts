@@ -98,15 +98,19 @@ let baseUrl = ''
 async function startServer() {
   const app = buildApp({ host: '127.0.0.1', port: 0 })
   // Mirror server.ts: the node adapter reports the underlying http.Server via the
-  // listen() callback's `serverInfo.raw.node.server`; its `address()` gives the
-  // OS-chosen ephemeral port once the server is ready.
+  // listen() callback's `serverInfo.raw.node.server`; the OS-chosen ephemeral port
+  // is read from its live socket address once the server is actually bound.
   let httpServer: { address(): { port?: number } | string | null } | undefined
   const cb = (serverInfo: unknown) => {
     httpServer = (serverInfo as { raw?: { node?: { server?: typeof httpServer } } }).raw?.node?.server
   }
   await app.listen({ port: 0, hostname: '127.0.0.1' }, cb as Parameters<typeof app.listen>[1])
-  const addr = httpServer?.address()
-  const port = typeof addr === 'object' && addr !== null ? addr.port : undefined
+  let port: number | undefined
+  for (let i = 0; i < 60 && port === undefined; i++) {
+    await new Promise((r) => setTimeout(r, 50))
+    const addr = httpServer?.address()
+    port = typeof addr === 'object' && addr !== null ? addr.port : undefined
+  }
   if (!port) throw new Error('could not determine ephemeral port')
   server = app
   baseUrl = `http://127.0.0.1:${port}`
