@@ -1,7 +1,7 @@
 import { application } from '@application'
 import crypto from 'crypto'
 
-const isValidToken = (token: string, apiKey: string): boolean => {
+export const isValidToken = (token: string, apiKey: string): boolean => {
   const tokenBuf = Buffer.from(token, 'utf8')
   const keyBuf = Buffer.from(apiKey, 'utf8')
   if (tokenBuf.length !== keyBuf.length) {

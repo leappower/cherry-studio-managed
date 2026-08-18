@@ -78,6 +78,15 @@ export const mockJobManager = {
   enqueue: vi.fn(() => ({ id: 'mock-job-id', snapshot: {}, finished: Promise.resolve({}) }))
 }
 
+/** Minimal ApiGatewayService mock (JJC-20260818-001): the managed-key loopback
+ *  route resolves it via application.get('ApiGatewayService'). Defaults no-op; the
+ *  route-level test supplies concrete ensureManagedKey/getManagedKey overrides. */
+export const mockApiGatewayService = {
+  ensureManagedKey: vi.fn(async () => 'cs-mk-mock'),
+  getManagedKey: vi.fn(() => 'cs-mk-mock'),
+  isInternalRequestToken: vi.fn(() => false)
+}
+
 /** Default service instances from existing mock files */
 export const defaultServiceInstances = {
   PreferenceService: MockMainPreferenceServiceExport.preferenceService,
@@ -88,7 +97,8 @@ export const defaultServiceInstances = {
   MainWindowService: mockMainWindowService,
   WindowManager: mockWindowManager,
   IpcApiService: mockIpcApiService,
-  JobManager: mockJobManager
+  JobManager: mockJobManager,
+  ApiGatewayService: mockApiGatewayService
 } as const
 
 /** Type for per-service overrides */

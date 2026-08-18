@@ -89,6 +89,8 @@ export const DOC_DESCRIPTIONS = {
   admin_add_provider_api_key: 'apiGateway.docs.operations.admin_add_provider_api_key',
   admin_replace_provider_api_keys: 'apiGateway.docs.operations.admin_replace_provider_api_keys',
   admin_read_usage: 'apiGateway.docs.operations.admin_read_usage',
+  // JJC-20260818-001 — loopback read-only managed-key route.
+  admin_read_managed_key: 'apiGateway.docs.operations.admin_read_managed_key',
   // F-6 / F-7b — managed admin read-only surface (skills / MCP / agent files).
   admin_list_skills: 'apiGateway.docs.operations.admin_list_skills',
   admin_list_mcp_servers: 'apiGateway.docs.operations.admin_list_mcp_servers',
@@ -134,6 +136,7 @@ function docDescriptions(lang: LanguageVarious): Record<DocDescriptionSlot, stri
     admin_add_provider_api_key: t('apiGateway.docs.operations.admin_add_provider_api_key', undefined, lang),
     admin_replace_provider_api_keys: t('apiGateway.docs.operations.admin_replace_provider_api_keys', undefined, lang),
     admin_read_usage: t('apiGateway.docs.operations.admin_read_usage', undefined, lang),
+    admin_read_managed_key: t('apiGateway.docs.operations.admin_read_managed_key', undefined, lang),
     admin_list_skills: t('apiGateway.docs.operations.admin_list_skills', undefined, lang),
     admin_list_mcp_servers: t('apiGateway.docs.operations.admin_list_mcp_servers', undefined, lang),
     admin_get_mcp_server: t('apiGateway.docs.operations.admin_get_mcp_server', undefined, lang),

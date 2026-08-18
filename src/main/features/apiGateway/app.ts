@@ -8,6 +8,7 @@ import { v4 as uuidv4 } from 'uuid'
 
 import { adminRoutes } from './adminRoutes'
 import { gatewayErrorHandler } from './errors'
+import { managedKeyRoute } from './managedKeyRoute'
 import { McpSessionStore } from './McpSessionStore'
 import { authorizeApiRequest, isAdminPath } from './middleware/auth'
 import {
@@ -185,6 +186,11 @@ export function buildApp({
     // `?key=` credentials). Registering `/v1beta` first keeps it out of that guard's
     // reach; the `local` gemini guard does not leak back onto `/v1`.
     .use(geminiRoutes)
+    // JJC-20260818-001 managed key loopback read-only route. Mounted here — OUTSIDE
+    // `buildV1Routes`' `scoped` admin guard (which would 403 an unset/absent
+    // managed_key, dead-locking first boot) and before it, mirroring how `geminiRoutes`
+    // escapes the `/v1` guard with its own self-contained (`local`) guard.
+    .use(managedKeyRoute)
     .use(buildV1Routes(mcpSessions))
 
   return app

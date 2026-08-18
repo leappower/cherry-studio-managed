@@ -75,6 +75,9 @@ export class ApiGatewayService extends BaseService implements Activatable {
   async onActivate(): Promise<void> {
     try {
       await this.ensureValidApiKey()
+      // Managed builds also ensure the independent admin key (F-3 managed_key).
+      // Official builds never take this path and never generate/persist it.
+      await this.ensureManagedKey()
       const { ApiGateway } = await import('./server')
       this.apiGateway = new ApiGateway()
       await this.apiGateway.start()
@@ -233,6 +236,33 @@ export class ApiGatewayService extends BaseService implements Activatable {
       logger.info('Generated new API key')
     }
     return apiKey
+  }
+
+  /**
+   * Ensure the managed (Fork F-3) admin key exists in the preference DB.
+   *
+   * Mirrors {@link ensureValidApiKey}: read `feature.api_gateway.managed_key`;
+   * if empty, generate a fresh `cs-mk-<uuid>` and persist it as the canonical
+   * value. Idempotent — a restart reuses the persisted key and never generates
+   * a second one (SC-003/SC-004). The key is independent from `api_key` and is
+   * consumed by the managed/admin surface (Bearer-only) and the loopback
+   * read-only route (batch B).
+   */
+  async ensureManagedKey(): Promise<string> {
+    const preferenceService = application.get('PreferenceService')
+    let managedKey = preferenceService.get('feature.api_gateway.managed_key')
+    if (typeof managedKey !== 'string' || managedKey.trim() === '') {
+      managedKey = `cs-mk-${uuidv4()}`
+      await preferenceService.set('feature.api_gateway.managed_key', managedKey)
+      logger.info('Generated managed key')
+    }
+    return managedKey
+  }
+
+  /** Resolve the managed key (empty string if unset). Used by the loopback read-only route. */
+  getManagedKey(): string {
+    const managedKey = application.get('PreferenceService').get('feature.api_gateway.managed_key')
+    return typeof managedKey === 'string' ? managedKey : ''
   }
 
   /**
