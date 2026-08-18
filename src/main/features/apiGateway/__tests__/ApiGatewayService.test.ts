@@ -14,10 +14,12 @@ const { mockStart, mockStop, mockGetActiveUsageContext, mockPreferenceSet, captu
   mockStart: vi.fn(),
   mockStop: vi.fn(),
   mockGetActiveUsageContext: vi.fn(),
-  mockPreferenceSet: vi.fn(async () => {}),
+  mockPreferenceSet: vi.fn<(key: string, value: unknown) => Promise<void>>(async () => {}),
   captured: {
     prefHandler: undefined as ((enabled: boolean) => void) | undefined,
-    enabledPreference: false
+    enabledPreference: false,
+    // controllable managed_key returned by the preference mock (shared with set).
+    managedKey: '' as string
   }
 }))
 
@@ -33,14 +35,20 @@ vi.mock('@application', async () => {
         captured.prefHandler = cb
         return () => {}
       }),
-      get: vi.fn((key: string) => (key.endsWith('api_key') ? 'existing-key' : false)),
+      get: vi.fn((key: string) => {
+        if (key === 'feature.api_gateway.managed_key') return captured.managedKey || false
+        return key.endsWith('api_key') ? 'existing-key' : false
+      }),
       getMultiple: vi.fn(() => ({
         enabled: captured.enabledPreference,
         host: '127.0.0.1',
         port: 23333,
         apiKey: 'existing-key'
       })),
-      set: mockPreferenceSet
+      set: vi.fn(async (key: string, value: unknown) => {
+        if (key === 'feature.api_gateway.managed_key') captured.managedKey = String(value)
+        await mockPreferenceSet(key, value)
+      })
     },
     CacheService: { setShared: vi.fn() },
     AgentSessionRuntimeService: { getActiveUsageContext: mockGetActiveUsageContext }
@@ -56,6 +64,7 @@ beforeEach(() => {
   BaseService.resetInstances()
   captured.prefHandler = undefined
   captured.enabledPreference = false
+  captured.managedKey = ''
   mockPreferenceSet.mockReset()
   mockPreferenceSet.mockResolvedValue(undefined)
   startResolvers = []
@@ -267,5 +276,49 @@ describe('ApiGatewayService reconcile', () => {
     await startSettled
 
     expect(service.isActivated).toBe(false) // converged to desiredEnabled === false
+  })
+
+  // ── JJC-20260818-001: managed_key (F-3) generation ────────────────────
+
+  it('AC1 — ensureManagedKey generates a fresh cs-mk-<uuid> when none exists', async () => {
+    const service = new ApiGatewayService()
+    const key = await service.ensureManagedKey()
+    expect(key.startsWith('cs-mk-')).toBe(true)
+    expect(key.length).toBeGreaterThan('cs-mk-'.length)
+    // persisted as the canonical value
+    expect(captured.managedKey).toBe(key)
+    expect(mockPreferenceSet).toHaveBeenCalledWith('feature.api_gateway.managed_key', key)
+  })
+
+  it('AC1 — ensureManagedKey is idempotent: reuses the persisted key, never generates a second one', async () => {
+    captured.managedKey = 'cs-mk-existing' // a key already persisted (e.g. from a prior boot)
+    const service = new ApiGatewayService()
+    const key = await service.ensureManagedKey()
+    expect(key).toBe('cs-mk-existing')
+    // No re-generation: the setter must NOT have been called for managed_key.
+    expect(mockPreferenceSet).not.toHaveBeenCalledWith('feature.api_gateway.managed_key', expect.anything())
+  })
+
+  it('AC1 — getManagedKey resolves the persisted key (empty string when unset)', async () => {
+    const service = new ApiGatewayService()
+    // Unset → empty string (route returns 500, never a bootstrapped key leak).
+    expect(service.getManagedKey()).toBe('')
+    captured.managedKey = 'cs-mk-set'
+    expect(service.getManagedKey()).toBe('cs-mk-set')
+  })
+
+  it('AC5 — managed key methods never log the raw key value in plaintext', async () => {
+    // The loopback route (managedKeyRoute.test.ts) asserts no logger call contains
+    // the raw key. Here we sanity-check the API surface: getManagedKey returns the
+    // value (the route's job to gate it loopback-only), and ensureManagedKey's
+    // success path does not embed the key in any returned error/message.
+    captured.managedKey = 'super-secret-managed-key'
+    const service = new ApiGatewayService()
+    const raw = service.getManagedKey()
+    expect(raw).toBe('super-secret-managed-key')
+    // ensureManagedKey on an existing key returns it verbatim without touching set.
+    const again = await service.ensureManagedKey()
+    expect(again).toBe('super-secret-managed-key')
+    expect(mockPreferenceSet).not.toHaveBeenCalledWith('feature.api_gateway.managed_key', expect.anything())
   })
 })

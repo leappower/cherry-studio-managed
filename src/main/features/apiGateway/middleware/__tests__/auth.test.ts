@@ -161,4 +161,54 @@ describe('authorizeApiRequest', () => {
       expect(authorizeApiRequest(multibyte, undefined)).toEqual({ status: 403, error: 'Forbidden' })
     })
   })
+
+  // ── JJC-20260818-001 / F-3: admin scope authenticates Bearer-only against the
+  // independent managed_key (never the employee api_key). ────────────────────
+  describe('Admin scope (managed_key, Bearer-only)', () => {
+    const adminKey = 'managed-key-123'
+
+    beforeEach(() => {
+      mockPreferenceGet.mockReturnValue(adminKey)
+    })
+
+    it('AC3 — returns 401 when no credential is presented', () => {
+      expect(authorizeApiRequest(undefined, undefined, { scope: 'admin' })).toEqual({
+        status: 401,
+        error: 'Unauthorized: missing credentials'
+      })
+    })
+
+    it('AC3 — returns 403 when managed_key is unset/absent', () => {
+      mockPreferenceGet.mockReturnValue(null)
+      expect(authorizeApiRequest(undefined, 'anything', { scope: 'admin' })).toEqual({
+        status: 403,
+        error: 'Forbidden'
+      })
+    })
+
+    it('AC3 — accepts a valid Bearer managed_key', () => {
+      expect(authorizeApiRequest(undefined, adminKey, { scope: 'admin' })).toBeUndefined()
+    })
+
+    it('AC3 — trims surrounding whitespace on the Bearer managed_key', () => {
+      expect(authorizeApiRequest(undefined, `  ${adminKey}  `, { scope: 'admin' })).toBeUndefined()
+    })
+
+    it('AC3 — rejects a wrong Bearer managed_key', () => {
+      expect(authorizeApiRequest(undefined, 'wrong-key', { scope: 'admin' })).toEqual({
+        status: 403,
+        error: 'Forbidden'
+      })
+    })
+
+    it('AC3 — the x-api-key header is NEVER accepted for the admin scope, even when valid', () => {
+      // F-3 AC5: admin is a distinct credential from the employee API key; a Bearer
+      // token must be presented. A valid employee api_key via x-api-key is refused.
+      mockPreferenceGet.mockReturnValue(adminKey)
+      expect(authorizeApiRequest('valid-api-key-123', undefined, { scope: 'admin' })).toEqual({
+        status: 401,
+        error: 'Unauthorized: missing credentials'
+      })
+    })
+  })
 })

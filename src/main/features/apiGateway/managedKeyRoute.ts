@@ -42,7 +42,7 @@ export const managedKeyRoute = new Elysia({ prefix: '/v1/admin' }).guard(
     as: 'local',
     beforeHandle: ({ request, server, set, headers }) => {
       // ① loopback-only source (EC-002 / R-1) — the primary boundary.
-      const remote = server?.requestIP?.(request)?.address
+      const remote = resolveRemoteAddress(request, server)
       if (!remote || !isLoopbackAddress(remote)) {
         set.status = 403
         return { error: 'Forbidden: managed-key route is loopback-only' }
@@ -94,6 +94,39 @@ export const managedKeyRoute = new Elysia({ prefix: '/v1/admin' }).guard(
       }
     )
 )
+
+/**
+ * Best-effort resolve of the request's source address, working across adapters.
+ *
+ * **Bun adapter**: `server.requestIP(request)` is supported — but the
+ * `@elysia/node` adapter implemented it as a *throwing stub* (it throws
+ * `"This adapter doesn't support Bun requestIP method"`) and its `server`
+ * context is null, so we must never let a node-side throw break the guard.
+ *
+ * **Node adapter (production)**: the raw Node `IncomingMessage` is reachable at
+ * `request.runtime.node.req` (srvx/crossws runtime the `@elysia/node` adapter
+ * attaches), giving us the real client socket.
+ *
+ * Returns the client address string, or undefined when it cannot be determined —
+ * in which case the caller rejects the request (fail-closed: an unbounded
+ * source is refused, never allowed).
+ */
+const resolveRemoteAddress = (request: Request, server: unknown): string | undefined => {
+  // Bun (or any adapter that implements requestIP properly).
+  try {
+    const viaRequestIP = (
+      server as { requestIP?: (req: Request) => { address?: string } | null | undefined } | null | undefined
+    )?.requestIP?.(request)
+    if (viaRequestIP && typeof viaRequestIP.address === 'string') return viaRequestIP.address
+  } catch {
+    // node's requestIP stub throws — fall through to the node socket.
+  }
+  // Node adapter: raw IncomingMessage socket carries the real client address.
+  const nodeReq = (request as unknown as { runtime?: { node?: { req?: { socket?: { remoteAddress?: string } } } } })
+    .runtime?.node?.req
+  const nodeAddr = nodeReq?.socket?.remoteAddress
+  return typeof nodeAddr === 'string' && nodeAddr !== '' ? nodeAddr : undefined
+}
 
 /** True for loopback / loopback-v4-mapped addresses. */
 const isLoopbackAddress = (address: string): boolean => {

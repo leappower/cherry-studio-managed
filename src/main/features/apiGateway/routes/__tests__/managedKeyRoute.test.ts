@@ -104,7 +104,7 @@ async function startServer() {
   const cb = (serverInfo: unknown) => {
     httpServer = (serverInfo as { raw?: { node?: { server?: typeof httpServer } } }).raw?.node?.server
   }
-  await app.listen({ port: 0, hostname: '127.0.0.1' }, cb as Parameters<typeof app.listen>[1])
+  app.listen({ port: 0, hostname: '127.0.0.1' }, cb as Parameters<typeof app.listen>[1])
   let port: number | undefined
   for (let i = 0; i < 60 && port === undefined; i++) {
     await new Promise((r) => setTimeout(r, 50))
@@ -166,15 +166,17 @@ describe('managedKeyRoute', () => {
     expect(mockEnsureManagedKey).toHaveBeenCalled()
   })
 
-  it('AC1/AC4 - idempotent: repeated first-boot fetches return the SAME key, ensureManagedKey is idempotent (no re-generation)', async () => {
+  it('AC1/AC4 — idempotent: the fresh key is stable across fetches (ensureManagedKey does not re-generate)', async () => {
     const first = await fetchKey({ 'x-device-id': 'dev-1' })
-    const second = await fetchKey({ 'x-device-id': 'dev-1' })
+    const key = (first.body as { managed_key: string }).managed_key
     expect(first.status).toBe(200)
+    // Now that a key exists, Bearer is required (defense-in-depth); with the
+    // correct Bearer the SAME key is returned — never a regenerated one.
+    const second = await fetchKey({ 'x-device-id': 'dev-1', authorization: `Bearer ${key}` })
     expect(second.status).toBe(200)
-    expect(second.body).toEqual(first.body)
-    // ensureManagedKey saw the existing key on the 2nd call and did NOT re-generate.
-    // (mock returns the same value regardless; ApiGatewayService.ensureManagedKey
-    // is the real idempotency guard, covered in ApiGatewayService.test.ts.)
+    expect(second.body).toEqual({ managed_key: key })
+    // (True generation-once idempotency lives in ApiGatewayService.ensureManagedKey,
+    // covered in ApiGatewayService.test.ts.)
   })
 
   it('AC2 - device binding: missing X-Device-Id -> 403 (even on loopback)', async () => {
