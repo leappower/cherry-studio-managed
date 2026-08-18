@@ -74,7 +74,14 @@ export class ApiGateway {
     // process env, so it would silently keep the LAN override off on every
     // machine (the env-inheritance bug fixed for isManagedBuild applies here too).
     // Only override when the user has not explicitly pinned a non-loopback host.
-    const isManaged = existsSync(join(process.resourcesPath, 'sidecar', 'sidecar.exe'))
+    // process.resourcesPath is only defined in a packaged Electron runtime; under
+    // vitest/node it is undefined, so guard before join() to keep the gateway
+    // server tests green (the physical sidecar product is still detected at runtime).
+    const resourcesPath = process.resourcesPath
+    const isManaged =
+      typeof resourcesPath === 'string' && resourcesPath !== ''
+        ? existsSync(join(resourcesPath, 'sidecar', 'sidecar.exe'))
+        : false
     const host =
       isManaged && (configuredHost === '127.0.0.1' || configuredHost === 'localhost') ? '0.0.0.0' : configuredHost
 
