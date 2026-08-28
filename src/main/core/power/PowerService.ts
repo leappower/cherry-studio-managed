@@ -10,7 +10,6 @@ import {
   ServicePhase
 } from '@main/core/lifecycle'
 import { isLinux, isMac, isWin } from '@main/core/platform'
-import ElectronShutdownHandler from '@paymoapp/electron-shutdown-handler'
 import { BrowserWindow, powerMonitor, powerSaveBlocker } from 'electron'
 
 const logger = loggerService.withContext('PowerService')
@@ -92,9 +91,9 @@ export class PowerService extends BaseService {
     this.onPowerSourceChange = this._onPowerSourceChange.event
   }
 
-  protected onInit(): void {
+  protected async onInit(): Promise<void> {
     this.initPowerEvents()
-    this.initShutdownBarrier()
+    await this.initShutdownBarrier()
     this.initSleepPrevention()
     logger.info('PowerService initialized', { platform: process.platform })
   }
@@ -160,9 +159,9 @@ export class PowerService extends BaseService {
   // Shutdown barrier (bounded, cross-platform)
   // ==========================================================================
 
-  private initShutdownBarrier(): void {
+  private async initShutdownBarrier(): Promise<void> {
     if (isWin) {
-      this.initWindowsShutdownHandler()
+      await this.initWindowsShutdownHandler()
     } else if (isMac || isLinux) {
       this.initElectronShutdownHandler()
     }
@@ -234,7 +233,45 @@ export class PowerService extends BaseService {
     logger.info('Electron powerMonitor shutdown listener registered')
   }
 
-  private initWindowsShutdownHandler(): void {
+  private async loadWindowsShutdownHandler(): Promise<any | null> {
+    try {
+      // Dynamic import (not require) so vitest's vi.mock intercepts it in tests; in
+      // production the ESM build transpiles this to a guarded require. The addon
+      // ships C++ sources compiled at install time (node-gyp); builds that skip
+      // postinstall/rebuild (no VS toolchain) will lack the .node binary — a static
+      // import would crash the main process on startup (ERROR: Cannot find module
+      // '../build/Release/PaymoWinShutdownHandler.node'). The try/catch lets the rest
+      // of the app boot and degrades the Windows shutdown barrier to the
+      // cross-platform powerMonitor path.
+
+      const mod = await import('@paymoapp/electron-shutdown-handler')
+      // Interop: the package's CJS entry may attach the API to `default` (ESM-style
+      // interop) or export it directly. Both are handled here.
+      const api = (mod && (mod as any).default) || mod
+      return api && typeof api.setWindowHandle === 'function' ? api : null
+    } catch (error) {
+      logger.warn('Failed to load @paymoapp/electron-shutdown-handler', error as Error)
+      return null
+    }
+  }
+
+  private async initWindowsShutdownHandler(): Promise<void> {
+    // The native addon `@paymoapp/electron-shutdown-handler` may be missing when the
+    // Windows package is built without a C++ toolchain (node-gyp cannot compile the
+    // .node addon). The top-level static import would crash the main process at load
+    // time — observed in the field on installs built via `pnpm install --ignore-scripts`
+    // + `npmRebuild=false`. We therefore lazily load the addon inside try/catch and
+    // degrade gracefully: if unavailable, fall back to the cross-platform powerMonitor
+    // shutdown listener (same semantics, less tight OS coupling on Windows).
+    const shutdownHandler = await this.loadWindowsShutdownHandler()
+    if (shutdownHandler == null) {
+      logger.warn(
+        'Windows shutdown handler addon unavailable (@paymoapp/electron-shutdown-handler ' +
+          '.node missing) — falling back to powerMonitor shutdown listener'
+      )
+      this.initElectronShutdownHandler()
+      return
+    }
     try {
       // The native addon hooks Windows shutdown messages (WM_QUERYENDSESSION) on a real
       // window handle (HWND). We deliberately create our OWN hidden window rather than
@@ -256,16 +293,16 @@ export class PowerService extends BaseService {
         paintWhenInitiallyHidden: false,
         skipTaskbar: true
       })
-      ElectronShutdownHandler.setWindowHandle(shutdownHookWindow.getNativeWindowHandle())
+      shutdownHandler.setWindowHandle(shutdownHookWindow.getNativeWindowHandle())
 
-      ElectronShutdownHandler.on('shutdown', async () => {
+      shutdownHandler.on('shutdown', async () => {
         logger.info('System shutdown event detected (Windows)')
         try {
           await this.executeShutdownHandlers()
         } finally {
           // Release the block so Windows may proceed, then quit cleanly (mirrors the
           // macOS/Linux preventDefault → quit path; quit keeps _isQuitting bookkeeping).
-          ElectronShutdownHandler.releaseShutdown()
+          shutdownHandler.releaseShutdown()
           application.quit()
         }
       })
@@ -274,7 +311,7 @@ export class PowerService extends BaseService {
       // observes the event and does NOT hold the OS — this is what makes the Windows
       // path a real barrier, symmetric with preventDefault() on macOS/Linux. Must be
       // called after the listener is attached (the listener is what installs the hook).
-      ElectronShutdownHandler.blockShutdown('Cherry Studio is finishing background work')
+      shutdownHandler.blockShutdown('Cherry Studio is finishing background work')
 
       this.registerDisposable(() => {
         if (!shutdownHookWindow.isDestroyed()) shutdownHookWindow.destroy()
